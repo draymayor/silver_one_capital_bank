@@ -16,14 +16,40 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json()
     const { stepData, password, docs } = body as {
-      stepData: Record<string, unknown>
+      stepData: Record<string, any>
       password: string
       docs?: Array<{ document_type: string; file_name: string; storage_path: string }>
     }
 
+    if (!password || password.length < 8) {
+      return NextResponse.json({ error: 'Password must be at least 8 characters.' }, { status: 400 })
+    }
+
+    const tempEmail = `pending-${Date.now()}-${Math.floor(Math.random() * 100000)}@silverunioncapital.com`
+    const { data: authUser, error: authError } = await supabaseAdmin.auth.admin.createUser({
+      email: tempEmail,
+      password,
+      email_confirm: true,
+      user_metadata: {
+        onboarding_email: stepData?.contact?.email ?? '',
+      },
+    })
+
+    if (authError || !authUser.user) {
+      return NextResponse.json({ error: 'Failed to create pending auth account.' }, { status: 500 })
+    }
+
+    const safeStepData = {
+      ...stepData,
+      auth: {
+        authUserId: authUser.user.id,
+        onboardingEmail: stepData?.contact?.email ?? null,
+      },
+    }
+
     const { data, error } = await supabaseAdmin
       .from('applications')
-      .insert([{ status: 'submitted', step_data: stepData, password_hash: password }])
+      .insert([{ status: 'submitted', step_data: safeStepData }])
       .select('id')
       .single()
 

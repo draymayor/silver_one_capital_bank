@@ -9,34 +9,51 @@ function generateAccountNumber() {
   return String(Math.floor(1000000000 + Math.random() * 9000000000))
 }
 
+function generateTemporaryPassword() {
+  return `SUC!${Math.random().toString(36).slice(2, 10)}A1`
+}
+
+async function isAuthorizedAdmin(request: NextRequest, supabaseUrl: string, anonKey: string) {
+  const adminToken = request.cookies.get('suc-admin-session')?.value
+  if (!adminToken) return false
+
+  const authClient = createClient(supabaseUrl, anonKey, {
+    global: { headers: { Authorization: `Bearer ${adminToken}` } },
+    auth: { autoRefreshToken: false, persistSession: false },
+  })
+
+  const { data, error } = await authClient.auth.getUser()
+  return !error && data.user?.email === ADMIN_EMAIL
+}
+
 export async function PATCH(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    const adminCookie = request.cookies.get('suc-admin-session')
-    if (!adminCookie?.value) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-    if (!supabaseUrl || !serviceRoleKey) {
+    if (!supabaseUrl || !serviceRoleKey || !anonKey) {
       return NextResponse.json({ error: 'Server environment is missing Supabase configuration.' }, { status: 500 })
+    }
+
+    const authorized = await isAuthorizedAdmin(request, supabaseUrl, anonKey)
+    if (!authorized) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     })
-    const { status } = await request.json()
 
+    const { status } = await request.json()
     if (!allowedStatuses.has(status)) {
       return NextResponse.json({ error: 'Invalid status update request.' }, { status: 400 })
     }
 
     const applicationId = params.id
-
     const { data: application, error: fetchError } = await supabaseAdmin
       .from('applications')
       .select('*')
@@ -48,6 +65,7 @@ export async function PATCH(
     }
 
     let userId: string | null = null
+    let temporaryPassword: string | null = null
 
     if (status === 'approved') {
       const existingProfile = await supabaseAdmin
@@ -59,24 +77,38 @@ export async function PATCH(
       userId = existingProfile.data?.user_id ?? generateUserId()
 
       if (!existingProfile.data) {
-        const generatedEmail = `${userId}@silverunioncapital.com`
-        const loginPassword = application.password_hash || `${Math.random().toString(36).slice(2)}A1!`
+        const authUserId = application.step_data?.auth?.authUserId as string | undefined
+        const finalLoginEmail = `${userId}@silverunioncapital.com`
+        const fullName = `${application.step_data?.personal?.firstName ?? ''} ${application.step_data?.personal?.lastName ?? ''}`.trim() || 'Customer'
 
-        const { data: authUser, error: authError } = await supabaseAdmin.auth.admin.createUser({
-          email: generatedEmail,
-          password: loginPassword,
-          email_confirm: true,
-          user_metadata: {
-            user_id: userId,
-            full_name: `${application.step_data?.personal?.firstName ?? ''} ${application.step_data?.personal?.lastName ?? ''}`.trim(),
-          },
-        })
+        let resolvedAuthUserId = authUserId
+        if (resolvedAuthUserId) {
+          const { error: updateAuthError } = await supabaseAdmin.auth.admin.updateUserById(resolvedAuthUserId, {
+            email: finalLoginEmail,
+            email_confirm: true,
+            user_metadata: { user_id: userId, full_name: fullName },
+          })
 
-        if (authError || !authUser.user) {
-          return NextResponse.json({ error: 'Failed to create customer auth account.' }, { status: 500 })
+          if (updateAuthError) {
+            resolvedAuthUserId = undefined
+          }
         }
 
-        const fullName = `${application.step_data?.personal?.firstName ?? ''} ${application.step_data?.personal?.lastName ?? ''}`.trim() || 'Customer'
+        if (!resolvedAuthUserId) {
+          temporaryPassword = generateTemporaryPassword()
+          const { data: createdAuth, error: createAuthError } = await supabaseAdmin.auth.admin.createUser({
+            email: finalLoginEmail,
+            password: temporaryPassword,
+            email_confirm: true,
+            user_metadata: { user_id: userId, full_name: fullName },
+          })
+
+          if (createAuthError || !createdAuth.user) {
+            return NextResponse.json({ error: 'Failed to create customer auth account.' }, { status: 500 })
+          }
+
+          resolvedAuthUserId = createdAuth.user.id
+        }
 
         const { data: profile, error: profileError } = await supabaseAdmin
           .from('user_profiles')
@@ -84,11 +116,11 @@ export async function PATCH(
             {
               user_id: userId,
               full_name: fullName,
-              email: application.step_data?.contact?.email ?? generatedEmail,
+              email: application.step_data?.contact?.email ?? finalLoginEmail,
               phone: application.step_data?.contact?.phone ?? '',
               status: 'active',
               application_id: applicationId,
-              auth_user_id: authUser.user.id,
+              auth_user_id: resolvedAuthUserId,
             },
           ])
           .select('id')
@@ -107,7 +139,6 @@ export async function PATCH(
             status: 'active',
           },
         ])
-
         if (accountError) {
           return NextResponse.json({ error: 'Failed to create default account.' }, { status: 500 })
         }
@@ -120,7 +151,6 @@ export async function PATCH(
             notification_type: 'success',
           },
         ])
-
         if (notificationError) {
           return NextResponse.json({ error: 'Failed to create approval notification.' }, { status: 500 })
         }
@@ -146,7 +176,7 @@ export async function PATCH(
       },
     ])
 
-    return NextResponse.json({ ok: true, status, userId })
+    return NextResponse.json({ ok: true, status, userId, temporaryPassword })
   } catch {
     return NextResponse.json({ error: 'Unexpected server error.' }, { status: 500 })
   }

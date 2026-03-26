@@ -72,7 +72,8 @@ export default function ApplicationDetailPage() {
       if (!res.ok || !payload?.ok) throw new Error(payload?.error || 'Request failed')
 
       if (status === 'approved' && payload.userId) {
-        showToast(`Application approved. User ID: ${payload.userId}`, 'success')
+        const tempPwMsg = payload.temporaryPassword ? ` Temporary password: ${payload.temporaryPassword}` : ''
+        showToast(`Application approved. User ID: ${payload.userId}.${tempPwMsg}`, 'success')
       } else {
         showToast(`Application marked as ${getStatusLabel(status)}`, 'success')
       }
