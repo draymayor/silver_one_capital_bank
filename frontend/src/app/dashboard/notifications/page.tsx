@@ -1,8 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Bell, CheckCircle, AlertCircle, Info, X } from 'lucide-react'
 import { formatDate } from '@/lib/utils'
+import { supabase } from '@/lib/supabase/client'
 
 const mockNotifications = [
   { id: '1', title: 'Account Approved', message: 'Your Silver Union Capital account has been approved. Welcome aboard!', is_read: false, notification_type: 'success', created_at: new Date().toISOString() },
@@ -20,14 +21,46 @@ const typeConfig = {
 export default function NotificationsPage() {
   const [notifications, setNotifications] = useState(mockNotifications)
 
-  function markRead(id: string) {
+  useEffect(() => {
+    async function fetchNotifications() {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session) return
+
+        const { data: profile } = await supabase
+          .from('user_profiles')
+          .select('id')
+          .eq('auth_user_id', session.user.id)
+          .single()
+
+        if (!profile?.id) return
+
+        const { data } = await supabase
+          .from('notifications')
+          .select('*')
+          .eq('user_profile_id', profile.id)
+          .order('created_at', { ascending: false })
+
+        if (data && data.length > 0) setNotifications(data)
+      } catch {
+        // keep mock fallback
+      }
+    }
+
+    fetchNotifications()
+  }, [])
+
+  async function markRead(id: string) {
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n))
+    await supabase.from('notifications').update({ is_read: true }).eq('id', id)
   }
-  function markAllRead() {
+  async function markAllRead() {
     setNotifications(prev => prev.map(n => ({ ...n, is_read: true })))
+    await supabase.from('notifications').update({ is_read: true }).eq('is_read', false)
   }
-  function dismiss(id: string) {
+  async function dismiss(id: string) {
     setNotifications(prev => prev.filter(n => n.id !== id))
+    await supabase.from('notifications').delete().eq('id', id)
   }
 
   const unread = notifications.filter(n => !n.is_read).length

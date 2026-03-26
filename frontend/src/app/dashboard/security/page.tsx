@@ -1,22 +1,58 @@
 'use client'
 
 import { useState } from 'react'
-import { Shield, Lock, Eye, EyeOff, CheckCircle } from 'lucide-react'
+import { Shield, Lock, Eye, EyeOff, CheckCircle, AlertCircle } from 'lucide-react'
+import { supabase } from '@/lib/supabase/client'
 
 export default function SecurityPage() {
   const [showCurrent, setShowCurrent] = useState(false)
   const [showNew, setShowNew] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
   const [form, setForm] = useState({ current: '', newPw: '', confirm: '' })
 
   function handleChange(k: string, v: string) { setForm(f => ({ ...f, [k]: v })) }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (form.newPw.length >= 8 && form.newPw === form.confirm) {
+    setError('')
+
+    if (form.newPw.length < 8) {
+      setError('New password must be at least 8 characters.')
+      return
+    }
+
+    if (form.newPw !== form.confirm) {
+      setError('Password confirmation does not match.')
+      return
+    }
+
+    setLoading(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) throw new Error('No active session found.')
+
+      const res = await fetch('/api/account/password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accessToken: session.access_token,
+          currentPassword: form.current,
+          newPassword: form.newPw,
+        }),
+      })
+
+      const payload = await res.json()
+      if (!res.ok || !payload?.ok) throw new Error(payload?.error || 'Password update failed')
+
       setSaved(true)
       setTimeout(() => setSaved(false), 3000)
       setForm({ current: '', newPw: '', confirm: '' })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to update password.')
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -27,7 +63,6 @@ export default function SecurityPage() {
         <p className="text-gray-500 text-sm mt-1">Manage your password and security preferences.</p>
       </div>
 
-      {/* Security status */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
         <h2 className="font-heading font-bold text-[#0B2447] text-base mb-5">Account Security Status</h2>
         <div className="space-y-4">
@@ -47,7 +82,6 @@ export default function SecurityPage() {
         </div>
       </div>
 
-      {/* Change password */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="flex items-center gap-2.5 px-6 py-4 border-b border-gray-100 bg-gray-50">
           <Lock className="w-4 h-4 text-[#0B2447]" />
@@ -58,6 +92,12 @@ export default function SecurityPage() {
             <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl px-4 py-3 mb-5">
               <CheckCircle className="w-4 h-4 text-green-500" />
               <p className="text-green-700 text-sm font-medium">Password updated successfully.</p>
+            </div>
+          )}
+          {error && (
+            <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3 mb-5">
+              <AlertCircle className="w-4 h-4 text-red-500" />
+              <p className="text-red-700 text-sm font-medium">{error}</p>
             </div>
           )}
           <form onSubmit={handleSubmit} className="space-y-4" data-testid="change-password-form">
@@ -85,8 +125,8 @@ export default function SecurityPage() {
                 </div>
               </div>
             ))}
-            <button type="submit" className="bg-[#0B2447] text-white hover:bg-[#06162c] px-6 py-3 rounded-xl text-sm font-semibold transition-all" data-testid="update-password-btn">
-              Update Password
+            <button type="submit" disabled={loading} className="bg-[#0B2447] text-white hover:bg-[#06162c] disabled:opacity-60 px-6 py-3 rounded-xl text-sm font-semibold transition-all" data-testid="update-password-btn">
+              {loading ? 'Updating...' : 'Update Password'}
             </button>
           </form>
         </div>

@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { supabase } from '@/lib/supabase/client'
 import { formatDate, getStatusColor, getStatusLabel } from '@/lib/utils'
 import { Search, Filter, ArrowRight, RefreshCw } from 'lucide-react'
 
@@ -29,8 +28,11 @@ export default function ApplicationsClient() {
     async function fetchApps() {
       setLoading(true)
       try {
-        const { data, error } = await supabase.from('applications').select('*').order('created_at', { ascending: false })
-        if (!error && data && data.length > 0) setApplications(data)
+        const res = await fetch('/api/admin/applications', { credentials: 'include' })
+        const payload = await res.json()
+        if (res.ok && payload?.ok && Array.isArray(payload.applications) && payload.applications.length > 0) {
+          setApplications(payload.applications)
+        }
       } catch { /* use mock */ }
       finally { setLoading(false) }
     }
