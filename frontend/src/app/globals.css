@@ -1,0 +1,122 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-manrope: 'Manrope', sans-serif;
+  --font-inter: 'Inter', sans-serif;
+  --color-navy: #0B2447;
+  --color-accent: #1565C0;
+  --color-silver: #C8C8C8;
+  --color-charcoal: #2b2b2b;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-inter);
+  color: var(--color-charcoal);
+  background-color: #ffffff;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-manrope);
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-[#0B2447] text-white hover:bg-[#06162c] transition-all duration-200 rounded-lg px-6 py-3 font-semibold shadow-sm hover:shadow-md;
+  }
+
+  .btn-secondary {
+    @apply bg-transparent text-[#0B2447] border-2 border-[#0B2447] hover:bg-[#F8F9FA] transition-all duration-200 rounded-lg px-6 py-3 font-semibold;
+  }
+
+  .btn-accent {
+    @apply bg-[#1565C0] text-white hover:bg-[#11529c] transition-all duration-200 rounded-lg px-6 py-3 font-semibold shadow-sm hover:shadow-md;
+  }
+
+  .card-premium {
+    @apply bg-white border border-gray-100 rounded-xl shadow-card hover:shadow-premium transition-shadow duration-300;
+  }
+
+  .input-field {
+    @apply w-full border border-gray-300 rounded-lg px-4 py-3 text-charcoal focus:ring-2 focus:ring-accent focus:border-transparent outline-none transition-all duration-200 text-sm;
+  }
+
+  .section-padding {
+    @apply py-16 sm:py-24;
+  }
+
+  .container-max {
+    @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8;
+  }
+
+  .text-navy {
+    color: var(--color-navy);
+  }
+
+  .bg-navy {
+    background-color: var(--color-navy);
+  }
+
+  .status-badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+}
+
+/* Smooth transitions for page elements */
+.animate-fade-in {
+  animation: fadeIn 0.5s ease-in-out;
+}
+
+.animate-slide-up {
+  animation: slideUp 0.4s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #F8F9FA;
+}
+::-webkit-scrollbar-thumb {
+  background: #C8C8C8;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #0B2447;
+}
+
+/* Form focus styles */
+input:focus, select:focus, textarea:focus {
+  outline: none;
+}
+
+/* Table styles */
+table {
+  border-collapse: collapse;
+}
