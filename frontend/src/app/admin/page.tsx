@@ -32,7 +32,22 @@ export default function AdminOverviewPage() {
         if (!error && data && data.length > 0) {
           setApplications(data)
           const s: Stats = { total: data.length, submitted: 0, under_review: 0, approved: 0, rejected: 0, active_users: 0 }
-          data.forEach(a => { if (a.status in s) (s as Record<string, number>)[a.status]++ })
+          data.forEach((a) => {
+            switch (a.status) {
+              case 'submitted':
+                s.submitted += 1
+                break
+              case 'under_review':
+                s.under_review += 1
+                break
+              case 'approved':
+                s.approved += 1
+                break
+              case 'rejected':
+                s.rejected += 1
+                break
+            }
+          })
           const { count } = await supabase.from('user_profiles').select('*', { count: 'exact', head: true }).eq('status', 'active')
           s.active_users = count ?? 0
           setStats(s)

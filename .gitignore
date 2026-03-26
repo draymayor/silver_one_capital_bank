@@ -1,4 +1,9 @@
--e 
 # Environment files
 *.env
 *.env.*
+
+# Node / Next.js artifacts
+node_modules/
+frontend/node_modules/
+.next/
+frontend/.next/

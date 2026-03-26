@@ -4,25 +4,16 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase/client'
 import { formatCurrency, formatDate } from '@/lib/utils'
-import { CreditCard, PiggyBank, TrendingUp, Bell, ArrowUpRight, ArrowDownLeft, ArrowRight, Shield, Clock } from 'lucide-react'
+import { CreditCard, PiggyBank, TrendingUp, Bell, ArrowRight, Shield } from 'lucide-react'
 
-const mockProfile = { full_name: 'Michael Johnson', user_id: 'SUC-2024-100001', status: 'active', created_at: new Date().toISOString() }
+const mockProfile = { full_name: 'Customer', user_id: 'SUC-DEMO', status: 'active', created_at: new Date().toISOString() }
 const mockAccounts = [
-  { id: '1', account_type: 'checking', account_number: '****4521', balance: 12450.75, status: 'active' },
-  { id: '2', account_type: 'savings', account_number: '****8832', balance: 45200.00, status: 'active' },
-]
-const mockActivity = [
-  { id: '1', type: 'debit', desc: 'Online Purchase — Amazon', amount: -149.99, date: new Date().toISOString() },
-  { id: '2', type: 'credit', desc: 'Payroll Deposit', amount: 5200.00, date: new Date(Date.now() - 86400000).toISOString() },
-  { id: '3', type: 'debit', desc: 'Utility Bill — ConEd', amount: -87.50, date: new Date(Date.now() - 172800000).toISOString() },
-  { id: '4', type: 'credit', desc: 'Transfer from Savings', amount: 500.00, date: new Date(Date.now() - 259200000).toISOString() },
-  { id: '5', type: 'debit', desc: 'Grocery Store', amount: -63.20, date: new Date(Date.now() - 345600000).toISOString() },
+  { id: '1', account_type: 'checking', account_number: '****0000', balance: 0, status: 'active' },
 ]
 
 export default function DashboardPage() {
   const [profile, setProfile] = useState(mockProfile)
   const [accounts, setAccounts] = useState(mockAccounts)
-  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     async function fetchData() {
@@ -35,8 +26,9 @@ export default function DashboardPage() {
           const { data: accountData } = await supabase.from('accounts').select('*').eq('user_profile_id', profileData.id)
           if (accountData && accountData.length > 0) setAccounts(accountData)
         }
-      } catch { /* use mock */ }
-      finally { setLoading(false) }
+      } catch {
+        // keep demo fallback
+      }
     }
     fetchData()
   }, [])
@@ -47,7 +39,6 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6" data-testid="dashboard-overview">
-      {/* Welcome */}
       <div className="bg-[#0B2447] rounded-2xl p-7 text-white relative overflow-hidden">
         <div className="absolute top-0 right-0 w-48 h-48 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2" />
         <div className="relative">
@@ -66,14 +57,12 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Total balance */}
       <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
         <p className="text-gray-500 text-sm mb-1">Total Balance (All Accounts)</p>
         <p className="font-heading font-extrabold text-4xl text-[#0B2447]">{formatCurrency(totalBalance)}</p>
         <p className="text-gray-400 text-xs mt-2">Member since {formatDate(profile.created_at)}</p>
       </div>
 
-      {/* Account cards */}
       <div className="grid sm:grid-cols-2 gap-5">
         {accounts.map((account) => {
           const Icon = accountIcons[account.account_type as keyof typeof accountIcons] ?? CreditCard
@@ -97,7 +86,6 @@ export default function DashboardPage() {
         })}
       </div>
 
-      {/* Quick links */}
       <div className="grid grid-cols-3 gap-4">
         {[
           { label: 'My Account', href: '/dashboard/my-account', icon: CreditCard },
@@ -113,32 +101,14 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      {/* Recent activity */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
           <h2 className="font-heading font-bold text-[#0B2447] text-base">Recent Activity</h2>
           <Link href="/dashboard/my-account" className="text-sm text-[#1565C0] hover:text-[#0B2447] font-medium flex items-center gap-1">
-            View all <ArrowRight className="w-3.5 h-3.5" />
+            View accounts <ArrowRight className="w-3.5 h-3.5" />
           </Link>
         </div>
-        <div className="divide-y divide-gray-50">
-          {mockActivity.map((item) => (
-            <div key={item.id} className="px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors">
-              <div className="flex items-center gap-3">
-                <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${item.type === 'credit' ? 'bg-green-50' : 'bg-red-50'}`}>
-                  {item.type === 'credit' ? <ArrowDownLeft className="w-4 h-4 text-green-600" /> : <ArrowUpRight className="w-4 h-4 text-red-500" />}
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-gray-800">{item.desc}</p>
-                  <p className="text-xs text-gray-400 flex items-center gap-1"><Clock className="w-3 h-3" />{formatDate(item.date)}</p>
-                </div>
-              </div>
-              <span className={`font-semibold text-sm ${item.amount > 0 ? 'text-green-600' : 'text-red-500'}`}>
-                {item.amount > 0 ? '+' : ''}{formatCurrency(item.amount)}
-              </span>
-            </div>
-          ))}
-        </div>
+        <div className="px-6 py-10 text-sm text-gray-500">Recent activity is hidden until persisted transaction data is available.</div>
       </div>
     </div>
   )

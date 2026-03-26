@@ -1,10 +1,10 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase/client'
-import { formatDate, getStatusColor, getStatusLabel, generateUserId } from '@/lib/utils'
+import { formatDate, getStatusColor, getStatusLabel } from '@/lib/utils'
 import { ArrowLeft, CheckCircle, XCircle, Clock, FileText, User, MapPin, Heart, Briefcase, Shield, Loader2, ExternalLink, Pencil } from 'lucide-react'
 
 const mockApp = {
@@ -30,7 +30,6 @@ interface InfoSection { title: string; icon: React.ElementType; rows: { label: s
 
 export default function ApplicationDetailPage() {
   const params = useParams()
-  const router = useRouter()
   const id = params.id as string
   const [app, setApp] = useState(mockApp)
   const [docs, setDocs] = useState(mockDocs)
@@ -43,11 +42,11 @@ export default function ApplicationDetailPage() {
     async function fetchApp() {
       setLoading(true)
       try {
-        const { data, error } = await supabase.from('applications').select('*').eq('id', id).single()
-        if (!error && data) {
-          setApp(data)
-          const { data: docsData } = await supabase.from('kyc_documents').select('*').eq('application_id', id)
-          if (docsData) setDocs(docsData)
+        const res = await fetch(`/api/admin/applications/${id}`, { credentials: 'include' })
+        const payload = await res.json()
+        if (res.ok && payload?.ok && payload.application) {
+          setApp(payload.application)
+          if (Array.isArray(payload.docs)) setDocs(payload.docs)
         }
       } catch { /* use mock */ }
       finally { setLoading(false) }
@@ -63,32 +62,19 @@ export default function ApplicationDetailPage() {
   async function updateStatus(status: string) {
     setActionLoading(status)
     try {
-      const { error } = await supabase.from('applications').update({ status, updated_at: new Date().toISOString() }).eq('id', id)
-      if (error) throw error
+      const res = await fetch(`/api/admin/applications/${id}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      })
 
-      // If approving, create user profile + auth user
-      if (status === 'approved') {
-        const userId = generateUserId()
-        const fullName = `${app.step_data.personal.firstName} ${app.step_data.personal.lastName}`
-        await supabase.from('user_profiles').insert([{
-          user_id: userId, full_name: fullName,
-          email: app.step_data.contact.email,
-          phone: app.step_data.contact.phone,
-          status: 'active', application_id: id,
-        }])
+      const payload = await res.json()
+      if (!res.ok || !payload?.ok) throw new Error(payload?.error || 'Request failed')
 
-        // Log audit
-        await supabase.from('audit_logs').insert([{
-          action: `application_${status}`, entity_type: 'application', entity_id: id,
-          admin_email: 'admin@silverunioncapital.com',
-          details: { user_id: userId, applicant: fullName },
-        }])
-        showToast(`Application approved. User ID: ${userId}`, 'success')
+      if (status === 'approved' && payload.userId) {
+        const tempPwMsg = payload.temporaryPassword ? ` Temporary password: ${payload.temporaryPassword}` : ''
+        showToast(`Application approved. User ID: ${payload.userId}.${tempPwMsg}`, 'success')
       } else {
-        await supabase.from('audit_logs').insert([{
-          action: `application_${status}`, entity_type: 'application', entity_id: id,
-          admin_email: 'admin@silverunioncapital.com', details: {},
-        }])
         showToast(`Application marked as ${getStatusLabel(status)}`, 'success')
       }
 
