@@ -1,7 +1,7 @@
 import Navbar from '@/components/layout/Navbar'
 import Footer from '@/components/layout/Footer'
 import Link from 'next/link'
-import { ChevronDown, Search } from 'lucide-react'
+import { ChevronDown } from 'lucide-react'
 
 const faqs = [
   { cat: 'Account Opening', q: 'How do I open an account with Silver Union Capital?', a: 'You can open an account entirely online through our secure application portal. The process takes about 10–15 minutes and requires a valid government-issued ID and basic personal information.' },
@@ -18,7 +18,7 @@ const faqs = [
   { cat: 'Fees', q: 'Are there wire transfer fees?', a: 'Domestic wire transfers are free for Silver Union Capital members. International wires carry a nominal fee based on the destination country and transfer amount.' },
 ]
 
-const cats = [...new Set(faqs.map(f => f.cat))]
+const cats = Array.from(new Set(faqs.map((f) => f.cat)))
 
 export default function FAQPage() {
   return (
