@@ -1,39 +1,69 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
 import { Shield, Eye, EyeOff, AlertCircle } from 'lucide-react'
 
+function mapQueryErrorToMessage(code: string | null) {
+  switch (code) {
+    case 'session_expired':
+      return 'Your session expired or is invalid. Please sign in again.'
+    case 'admin_required':
+      return 'This account does not have admin privileges.'
+    case 'server_config_missing':
+      return 'Server configuration is missing. Please contact support.'
+    default:
+      return ''
+  }
+}
+
 export default function AdminLoginPage() {
   const router = useRouter()
+
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPw, setShowPw] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [authErrorFromQuery, setAuthErrorFromQuery] = useState('')
+
+  useEffect(() => {
+    const errorCode = new URLSearchParams(window.location.search).get('error')
+    setAuthErrorFromQuery(mapQueryErrorToMessage(errorCode))
+  }, [])
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
     setError('')
-    if (!email || !password) { setError('Please enter email and password.'); return }
+
+    if (!email || !password) {
+      setError('Please enter email and password.')
+      return
+    }
+
     setLoading(true)
     try {
       const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password })
+
       if (authError || !data.session) {
-        setError('Invalid credentials. Access denied.')
+        setError(authError?.message || 'Unable to sign in. Please try again.')
         return
       }
-      // Check if admin email
+
       if (data.user?.email !== 'admin@silverunioncapital.com') {
         await supabase.auth.signOut()
         setError('This account does not have admin privileges.')
         return
       }
-      document.cookie = `suc-admin-session=${data.session.access_token}; path=/; max-age=3600; SameSite=Lax`
+
       router.push('/admin')
-    } catch {
-      setError('An unexpected error occurred.')
+    } catch (unexpectedError) {
+      if (unexpectedError instanceof Error && unexpectedError.message) {
+        setError(unexpectedError.message)
+      } else {
+        setError('An unexpected error occurred.')
+      }
     } finally {
       setLoading(false)
     }
@@ -69,10 +99,10 @@ export default function AdminLoginPage() {
           </div>
 
           <div className="px-8 py-8">
-            {error && (
+            {(error || authErrorFromQuery) && (
               <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl p-4 mb-6" data-testid="admin-login-error">
                 <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
-                <p className="text-red-700 text-sm">{error}</p>
+                <p className="text-red-700 text-sm">{error || authErrorFromQuery}</p>
               </div>
             )}
 

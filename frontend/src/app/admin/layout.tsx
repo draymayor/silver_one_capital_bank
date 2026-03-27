@@ -34,7 +34,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   async function handleLogout() {
     await supabase.auth.signOut()
-    document.cookie = 'suc-admin-session=; path=/; max-age=0'
     router.push('/admin/login')
   }
 
