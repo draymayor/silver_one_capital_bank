@@ -1,0 +1,79 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { ADMIN_EMAIL, getSupabaseEnv, isAuthorizedAdmin } from '@/lib/admin-auth'
+import { supabaseAdmin } from '@/lib/supabase/server'
+
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    if (!getSupabaseEnv()) {
+      return NextResponse.json({ error: 'Server environment is missing Supabase configuration.' }, { status: 500 })
+    }
+    const authorized = await isAuthorizedAdmin(request)
+    if (!authorized) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const { data, error } = await supabaseAdmin
+      .from('support_messages')
+      .select('*')
+      .eq('conversation_id', params.id)
+      .order('created_at', { ascending: true })
+
+    if (error) return NextResponse.json({ error: 'Failed to fetch messages.' }, { status: 500 })
+
+    await supabaseAdmin
+      .from('support_messages')
+      .update({ is_read: true })
+      .eq('conversation_id', params.id)
+      .eq('sender_type', 'customer')
+
+    return NextResponse.json({ ok: true, messages: data ?? [] })
+  } catch {
+    return NextResponse.json({ error: 'Unexpected server error.' }, { status: 500 })
+  }
+}
+
+export async function POST(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    if (!getSupabaseEnv()) {
+      return NextResponse.json({ error: 'Server environment is missing Supabase configuration.' }, { status: 500 })
+    }
+    const authorized = await isAuthorizedAdmin(request)
+    if (!authorized) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const { message } = await request.json()
+    if (!message || typeof message !== 'string') {
+      return NextResponse.json({ error: 'Message is required.' }, { status: 400 })
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('support_messages')
+      .insert([{ conversation_id: params.id, sender_type: 'admin', message: message.trim(), is_read: false }])
+      .select('*')
+      .single()
+
+    if (error) return NextResponse.json({ error: 'Failed to send message.' }, { status: 500 })
+
+    await supabaseAdmin
+      .from('support_conversations')
+      .update({ updated_at: new Date().toISOString() })
+      .eq('id', params.id)
+
+    await supabaseAdmin.from('audit_logs').insert([
+      {
+        action: 'support_reply',
+        entity_type: 'support_conversation',
+        entity_id: params.id,
+        admin_email: ADMIN_EMAIL,
+        details: { message_id: data.id },
+      },
+    ])
+
+    return NextResponse.json({ ok: true, message: data })
+  } catch {
+    return NextResponse.json({ error: 'Unexpected server error.' }, { status: 500 })
+  }
+}

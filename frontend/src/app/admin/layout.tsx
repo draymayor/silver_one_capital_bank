@@ -6,13 +6,15 @@ import { usePathname, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
 import {
   LayoutDashboard, FileText, Users, Settings, LogOut,
-  Bell, Menu, X, Shield, ChevronRight
+  Bell, Menu, X, Shield, ChevronRight, LifeBuoy, Activity
 } from 'lucide-react'
 
 const navItems = [
   { label: 'Overview', href: '/admin', icon: LayoutDashboard, exact: true },
   { label: 'Applications', href: '/admin/applications', icon: FileText },
   { label: 'Users', href: '/admin/users', icon: Users },
+  { label: 'Support Inbox', href: '/admin/support', icon: LifeBuoy },
+  { label: 'Activity', href: '/admin/activity', icon: Activity },
   { label: 'Settings', href: '/admin/settings', icon: Settings },
 ]
 
