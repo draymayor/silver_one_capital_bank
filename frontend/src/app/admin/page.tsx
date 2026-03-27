@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase/client'
 import { formatDate, getStatusColor, getStatusLabel } from '@/lib/utils'
 import {
   FileText, Users, CheckCircle, Clock, XCircle, TrendingUp,
-  ArrowRight, RefreshCw, AlertTriangle
+  ArrowRight, RefreshCw, AlertTriangle, LifeBuoy, Activity
 } from 'lucide-react'
 
 interface Stats { total: number; submitted: number; under_review: number; approved: number; rejected: number; active_users: number }
@@ -95,7 +95,7 @@ export default function AdminOverviewPage() {
       </div>
 
       {/* Quick actions */}
-      <div className="grid sm:grid-cols-3 gap-4">
+      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Link href="/admin/applications?status=submitted" className="bg-yellow-50 border border-yellow-200 rounded-xl p-5 hover:shadow-md transition-shadow group">
           <div className="flex items-center justify-between">
             <div>
@@ -124,6 +124,27 @@ export default function AdminOverviewPage() {
               <p className="text-purple-600 text-xs mt-1">Customer accounts</p>
             </div>
             <Users className="w-8 h-8 text-purple-500 group-hover:scale-110 transition-transform" />
+          </div>
+        </Link>
+
+        <Link href="/admin/support" className="bg-emerald-50 border border-emerald-200 rounded-xl p-5 hover:shadow-md transition-shadow group">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-heading font-bold text-emerald-900 text-sm">Support Inbox</p>
+              <p className="text-emerald-700 text-2xl font-extrabold mt-1">Open</p>
+              <p className="text-emerald-600 text-xs mt-1">Customer messages</p>
+            </div>
+            <LifeBuoy className="w-8 h-8 text-emerald-500 group-hover:scale-110 transition-transform" />
+          </div>
+        </Link>
+        <Link href="/admin/activity" className="bg-slate-50 border border-slate-200 rounded-xl p-5 hover:shadow-md transition-shadow group">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-heading font-bold text-slate-900 text-sm">Activity Log</p>
+              <p className="text-slate-700 text-2xl font-extrabold mt-1">Audit</p>
+              <p className="text-slate-600 text-xs mt-1">Admin actions</p>
+            </div>
+            <Activity className="w-8 h-8 text-slate-500 group-hover:scale-110 transition-transform" />
           </div>
         </Link>
       </div>
