@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
@@ -23,18 +23,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const router = useRouter()
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
-  useEffect(() => {
-    // Verify admin session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session || session.user?.email !== 'admin@silverunioncapital.com') {
-        router.push('/admin/login')
-      }
-    })
-  }, [router])
-
   async function handleLogout() {
     await supabase.auth.signOut()
-    router.push('/admin/login')
+    router.replace('/admin/login')
+    router.refresh()
   }
 
   function isActive(href: string, exact?: boolean) {
