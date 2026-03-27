@@ -190,22 +190,25 @@ export default function OpenAccountPage() {
         accountDetails: formData.accountDetails,
         kyc: { ...formData.kyc, ssn: formData.kyc.ssn.replace(/\d(?=\d{4})/g, '*') },
       }
-      const { data, error } = await supabase.from('applications').insert([{
-        status: 'submitted',
-        step_data: stepData,
-        password_hash: formData.password.password, // Will be hashed on approval
-      }]).select('id').single()
+      const docs = []
+      if (formData.kyc.passportPhotoPath) docs.push({ document_type: 'passport_photo', file_name: formData.kyc.passportPhotoName, storage_path: formData.kyc.passportPhotoPath })
+      if (formData.kyc.meansOfIdPath) docs.push({ document_type: 'means_of_id', file_name: formData.kyc.meansOfIdName, storage_path: formData.kyc.meansOfIdPath })
+      if (formData.kyc.supportingDocPath) docs.push({ document_type: 'supporting_doc', file_name: formData.kyc.supportingDocName, storage_path: formData.kyc.supportingDocPath })
 
-      let appId = data?.id ?? 'APP-' + Date.now()
-      if (!error && data?.id) {
-        // Save document metadata
-        const docs = []
-        if (formData.kyc.passportPhotoPath) docs.push({ application_id: appId, document_type: 'passport_photo', file_name: formData.kyc.passportPhotoName, storage_path: formData.kyc.passportPhotoPath })
-        if (formData.kyc.meansOfIdPath) docs.push({ application_id: appId, document_type: 'means_of_id', file_name: formData.kyc.meansOfIdName, storage_path: formData.kyc.meansOfIdPath })
-        if (formData.kyc.supportingDocPath) docs.push({ application_id: appId, document_type: 'supporting_doc', file_name: formData.kyc.supportingDocName, storage_path: formData.kyc.supportingDocPath })
-        if (docs.length > 0) await supabase.from('kyc_documents').insert(docs)
-      }
-      setApplicationId(appId)
+      const res = await fetch('/api/applications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          stepData,
+          password: formData.password.password,
+          docs,
+        }),
+      })
+
+      const payload = await res.json()
+      if (!res.ok || !payload?.ok) throw new Error(payload?.error || 'Submission failed')
+
+      setApplicationId(payload.id)
       setSubmitted(true)
     } catch {
       setErrors({ submit: 'Failed to submit application. Please try again.' })

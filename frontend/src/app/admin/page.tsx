@@ -2,14 +2,13 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { supabase } from '@/lib/supabase/client'
 import { formatDate, getStatusColor, getStatusLabel } from '@/lib/utils'
 import {
   FileText, Users, CheckCircle, Clock, XCircle, TrendingUp,
   ArrowRight, RefreshCw, AlertTriangle
 } from 'lucide-react'
 
-interface Stats { total: number; submitted: number; under_review: number; approved: number; rejected: number; active_users: number }
+interface Stats { total: number; submitted: number; under_review: number; approved: number; rejected: number; active_users: number; open_support: number }
 
 const mockApplications = [
   { id: 'app-001', status: 'submitted', created_at: new Date().toISOString(), step_data: { personal: { firstName: 'Michael', lastName: 'Johnson' }, contact: { email: 'michael@example.com' }, accountDetails: { accountType: 'checking' } } },
@@ -22,19 +21,48 @@ const mockApplications = [
 export default function AdminOverviewPage() {
   const [applications, setApplications] = useState(mockApplications)
   const [loading, setLoading] = useState(true)
-  const [stats, setStats] = useState<Stats>({ total: 5, submitted: 2, under_review: 1, approved: 1, rejected: 1, active_users: 1 })
+  const [stats, setStats] = useState<Stats>({ total: 5, submitted: 2, under_review: 1, approved: 1, rejected: 1, active_users: 1, open_support: 0 })
 
   useEffect(() => {
     async function fetchData() {
       setLoading(true)
       try {
-        const { data, error } = await supabase.from('applications').select('*').order('created_at', { ascending: false }).limit(10)
-        if (!error && data && data.length > 0) {
+        const [appsRes, usersRes, activityRes] = await Promise.all([
+          fetch('/api/admin/applications', { credentials: 'include' }),
+          fetch('/api/admin/users', { credentials: 'include' }),
+          fetch('/api/admin/activity', { credentials: 'include' }),
+        ])
+
+        const appsPayload = await appsRes.json()
+        const usersPayload = await usersRes.json()
+        const activityPayload = await activityRes.json()
+
+        if (appsRes.ok && appsPayload?.ok && Array.isArray(appsPayload.applications)) {
+          const data = appsPayload.applications
           setApplications(data)
-          const s: Stats = { total: data.length, submitted: 0, under_review: 0, approved: 0, rejected: 0, active_users: 0 }
-          data.forEach(a => { if (a.status in s) (s as Record<string, number>)[a.status]++ })
-          const { count } = await supabase.from('user_profiles').select('*', { count: 'exact', head: true }).eq('status', 'active')
-          s.active_users = count ?? 0
+          const s: Stats = { total: data.length, submitted: 0, under_review: 0, approved: 0, rejected: 0, active_users: 0, open_support: 0 }
+          data.forEach((a: any) => {
+            switch (a.status) {
+              case 'submitted':
+                s.submitted += 1
+                break
+              case 'under_review':
+                s.under_review += 1
+                break
+              case 'approved':
+                s.approved += 1
+                break
+              case 'rejected':
+                s.rejected += 1
+                break
+            }
+          })
+          if (usersRes.ok && usersPayload?.ok && Array.isArray(usersPayload.users)) {
+            s.active_users = usersPayload.users.filter((u: any) => u.status === 'active').length
+          }
+          if (activityRes.ok && activityPayload?.ok) {
+            s.open_support = activityPayload.open_support_count ?? 0
+          }
           setStats(s)
         }
       } catch { /* use mock data */ }
@@ -80,7 +108,7 @@ export default function AdminOverviewPage() {
       </div>
 
       {/* Quick actions */}
-      <div className="grid sm:grid-cols-3 gap-4">
+      <div className="grid sm:grid-cols-4 gap-4">
         <Link href="/admin/applications?status=submitted" className="bg-yellow-50 border border-yellow-200 rounded-xl p-5 hover:shadow-md transition-shadow group">
           <div className="flex items-center justify-between">
             <div>
@@ -109,6 +137,17 @@ export default function AdminOverviewPage() {
               <p className="text-purple-600 text-xs mt-1">Customer accounts</p>
             </div>
             <Users className="w-8 h-8 text-purple-500 group-hover:scale-110 transition-transform" />
+          </div>
+        </Link>
+
+        <Link href="/admin/support" className="bg-indigo-50 border border-indigo-200 rounded-xl p-5 hover:shadow-md transition-shadow group">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-heading font-bold text-indigo-900 text-sm">Open Support</p>
+              <p className="text-indigo-700 text-2xl font-extrabold mt-1">{stats.open_support}</p>
+              <p className="text-indigo-600 text-xs mt-1">Needs replies</p>
+            </div>
+            <Users className="w-8 h-8 text-indigo-500 group-hover:scale-110 transition-transform" />
           </div>
         </Link>
       </div>
