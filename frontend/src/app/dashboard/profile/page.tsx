@@ -4,15 +4,15 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { User, Mail, Briefcase } from 'lucide-react'
 
-const demoProfile = {
-  full_name: 'Customer Demo',
-  email: 'customer@example.com',
-  phone: '+1 (000) 000-0000',
+const defaultProfile = {
+  full_name: 'Customer',
+  email: 'Not available',
+  phone: 'Not available',
   status: 'active',
 }
 
 export default function ProfilePage() {
-  const [profile, setProfile] = useState(demoProfile)
+  const [profile, setProfile] = useState(defaultProfile)
 
   useEffect(() => {
     async function fetchProfile() {
@@ -28,10 +28,10 @@ export default function ProfilePage() {
 
         if (data) {
           setProfile({
-            full_name: data.full_name || demoProfile.full_name,
-            email: data.email || demoProfile.email,
-            phone: data.phone || demoProfile.phone,
-            status: data.status || demoProfile.status,
+            full_name: data.full_name || defaultProfile.full_name,
+            email: data.email || defaultProfile.email,
+            phone: data.phone || defaultProfile.phone,
+            status: data.status || defaultProfile.status,
           })
         }
       } catch {
@@ -78,9 +78,9 @@ export default function ProfilePage() {
           ],
         },
         {
-          icon: Briefcase, title: 'Prototype Note',
+          icon: Briefcase, title: 'Additional Information',
           rows: [
-            { label: 'Employment Data', value: 'Demo-only in this prototype' },
+            { label: 'Employment Data', value: 'Available after verification review' },
           ],
         },
       ].map(({ icon: Icon, title, rows }) => (
