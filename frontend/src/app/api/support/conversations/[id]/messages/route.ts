@@ -1,36 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
-import { getSupabaseEnv } from '@/lib/admin-auth'
 import { supabaseAdmin } from '@/lib/supabase/server'
-
-async function getUserProfileIdFromBearer(request: NextRequest) {
-  const env = getSupabaseEnv()
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  if (!env || !anonKey) return { error: 'Server environment is missing Supabase configuration.', status: 500 as const }
-
-  const authHeader = request.headers.get('authorization')
-  const accessToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
-  if (!accessToken) return { error: 'Missing access token.', status: 401 as const }
-
-  const authClient = createClient(env.supabaseUrl, anonKey, {
-    global: { headers: { Authorization: `Bearer ${accessToken}` } },
-    auth: { persistSession: false, autoRefreshToken: false },
-  })
-
-  const { data: userData } = await authClient.auth.getUser()
-  const authUserId = userData.user?.id
-  if (!authUserId) return { error: 'Invalid session.', status: 401 as const }
-
-  const { data: profile } = await supabaseAdmin
-    .from('user_profiles')
-    .select('id')
-    .eq('auth_user_id', authUserId)
-    .single()
-
-  if (!profile?.id) return { error: 'Unable to find your user profile.', status: 404 as const }
-
-  return { userProfileId: profile.id }
-}
+import { copyCookies, requireCustomerAuth } from '@/lib/customer-auth'
 
 async function validateConversationOwnership(conversationId: string, userProfileId: string) {
   const { data } = await supabaseAdmin
@@ -48,10 +18,18 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const auth = await getUserProfileIdFromBearer(request)
-    if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status })
+    const auth = await requireCustomerAuth(request)
+    if (!auth.authorized) return auth.response
 
-    const isOwner = await validateConversationOwnership(params.id, auth.userProfileId)
+    const { data: profile } = await supabaseAdmin
+      .from('user_profiles')
+      .select('id')
+      .eq('auth_user_id', auth.authUserId)
+      .single()
+
+    if (!profile?.id) return NextResponse.json({ error: 'Unable to find your user profile.' }, { status: 404 })
+
+    const isOwner = await validateConversationOwnership(params.id, profile.id)
     if (!isOwner) return NextResponse.json({ error: 'Conversation not found.' }, { status: 404 })
 
     const { data, error } = await supabaseAdmin
@@ -68,7 +46,9 @@ export async function GET(
       .eq('conversation_id', params.id)
       .eq('sender_type', 'admin')
 
-    return NextResponse.json({ ok: true, messages: data ?? [] })
+    const response = NextResponse.json({ ok: true, messages: data ?? [] })
+    copyCookies(auth.response, response)
+    return response
   } catch {
     return NextResponse.json({ error: 'Unexpected server error.' }, { status: 500 })
   }
@@ -79,10 +59,18 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   try {
-    const auth = await getUserProfileIdFromBearer(request)
-    if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status })
+    const auth = await requireCustomerAuth(request)
+    if (!auth.authorized) return auth.response
 
-    const isOwner = await validateConversationOwnership(params.id, auth.userProfileId)
+    const { data: profile } = await supabaseAdmin
+      .from('user_profiles')
+      .select('id')
+      .eq('auth_user_id', auth.authUserId)
+      .single()
+
+    if (!profile?.id) return NextResponse.json({ error: 'Unable to find your user profile.' }, { status: 404 })
+
+    const isOwner = await validateConversationOwnership(params.id, profile.id)
     if (!isOwner) return NextResponse.json({ error: 'Conversation not found.' }, { status: 404 })
 
     const { message } = await request.json()
@@ -103,7 +91,9 @@ export async function POST(
       .update({ status: 'open', updated_at: new Date().toISOString() })
       .eq('id', params.id)
 
-    return NextResponse.json({ ok: true, message: data })
+    const response = NextResponse.json({ ok: true, message: data })
+    copyCookies(auth.response, response)
+    return response
   } catch {
     return NextResponse.json({ error: 'Unexpected server error.' }, { status: 500 })
   }
