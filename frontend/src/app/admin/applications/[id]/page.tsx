@@ -9,6 +9,7 @@ import { ArrowLeft, CheckCircle, XCircle, Clock, FileText, User, MapPin, Heart, 
 
 const mockApp = {
   id: 'app-001',
+  user_id: null,
   status: 'submitted',
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString(),
@@ -27,6 +28,12 @@ const mockDocs = [
 ]
 
 interface InfoSection { title: string; icon: React.ElementType; rows: { label: string; value: string }[] }
+interface DocumentStatus {
+  docId: string
+  checked: boolean
+  exists: boolean
+  message?: string
+}
 
 export default function ApplicationDetailPage() {
   const params = useParams()
@@ -36,6 +43,7 @@ export default function ApplicationDetailPage() {
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState('')
   const [note, setNote] = useState('')
+  const [documentStatuses, setDocumentStatuses] = useState<Record<string, DocumentStatus>>({})
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
 
   useEffect(() => {
@@ -98,9 +106,50 @@ export default function ApplicationDetailPage() {
   }
 
   async function getDocUrl(path: string) {
-    const { data } = await supabase.storage.from('kyc-documents').createSignedUrl(path, 60)
-    if (data?.signedUrl) window.open(data.signedUrl, '_blank')
+    const { data, error } = await supabase.storage.from('kyc-documents').createSignedUrl(path, 60)
+    if (error || !data?.signedUrl) {
+      showToast(error?.message || 'Document is unavailable in storage.', 'error')
+      return
+    }
+    window.open(data.signedUrl, '_blank')
   }
+
+  useEffect(() => {
+    async function verifyDocumentAvailability() {
+      if (!docs.length) {
+        setDocumentStatuses({})
+        return
+      }
+      setDocumentStatuses(
+        Object.fromEntries(
+          docs.map((doc) => [
+            doc.id,
+            { docId: doc.id, checked: false, exists: false } satisfies DocumentStatus,
+          ]),
+        ),
+      )
+
+      const checks = await Promise.all(
+        docs.map(async (doc) => {
+          const { error } = await supabase.storage.from('kyc-documents').createSignedUrl(doc.storage_path, 10)
+          const exists = !error
+          return [
+            doc.id,
+            {
+              docId: doc.id,
+              checked: true,
+              exists,
+              message: exists ? undefined : (error?.message || 'Document was not uploaded successfully.'),
+            } satisfies DocumentStatus,
+          ] as const
+        }),
+      )
+
+      setDocumentStatuses(Object.fromEntries(checks))
+    }
+
+    verifyDocumentAvailability()
+  }, [docs])
 
   const sections: InfoSection[] = [
     {
@@ -143,7 +192,13 @@ export default function ApplicationDetailPage() {
     {
       title: 'KYC & Identity', icon: Shield,
       rows: [
-        { label: 'SSN (masked)', value: app.step_data.kyc.ssn },
+        { label: 'SSN', value: app.step_data.kyc.ssn },
+      ],
+    },
+    {
+      title: 'User ID', icon: User,
+      rows: [
+        { label: 'Assigned User ID', value: app.user_id || 'Not assigned yet' },
       ],
     },
   ]
@@ -241,10 +296,19 @@ export default function ApplicationDetailPage() {
                 <div>
                   <p className="text-sm font-medium text-gray-800">{doc.file_name}</p>
                   <p className="text-xs text-gray-400 capitalize">{doc.document_type.replace(/_/g, ' ')}</p>
+                  {documentStatuses[doc.id]?.checked && !documentStatuses[doc.id]?.exists && (
+                    <p className="text-xs text-red-500 mt-1">{documentStatuses[doc.id]?.message || 'Document was not uploaded successfully.'}</p>
+                  )}
                 </div>
-                <button onClick={() => getDocUrl(doc.storage_path)} className="inline-flex items-center gap-1.5 text-[#1565C0] hover:text-[#0B2447] text-xs font-semibold transition-colors">
-                  View <ExternalLink className="w-3.5 h-3.5" />
-                </button>
+                {!documentStatuses[doc.id]?.checked ? (
+                  <span className="text-xs font-semibold text-gray-400">Checking…</span>
+                ) : documentStatuses[doc.id]?.exists ? (
+                  <button onClick={() => getDocUrl(doc.storage_path)} className="inline-flex items-center gap-1.5 text-[#1565C0] hover:text-[#0B2447] text-xs font-semibold transition-colors">
+                    View <ExternalLink className="w-3.5 h-3.5" />
+                  </button>
+                ) : (
+                  <span className="text-xs font-semibold text-gray-400">Unavailable</span>
+                )}
               </div>
             ))}
           </div>
