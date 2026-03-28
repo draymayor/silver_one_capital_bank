@@ -5,12 +5,14 @@ import { Bell, CheckCircle, AlertCircle, Info, X } from 'lucide-react'
 import { formatDate } from '@/lib/utils'
 import { supabase } from '@/lib/supabase/client'
 
-const mockNotifications = [
-  { id: '1', title: 'Account Approved', message: 'Your Silver Union Capital account has been approved. Welcome aboard!', is_read: false, notification_type: 'success', created_at: new Date().toISOString() },
-  { id: '2', title: 'Security Alert', message: 'A new device signed into your account. If this wasn\'t you, contact support immediately.', is_read: false, notification_type: 'warning', created_at: new Date(Date.now() - 3600000).toISOString() },
-  { id: '3', title: 'Transaction Alert', message: 'A debit of $149.99 was processed on your Checking account ending in 4521.', is_read: true, notification_type: 'info', created_at: new Date(Date.now() - 86400000).toISOString() },
-  { id: '4', title: 'Statement Ready', message: 'Your monthly account statement for January 2025 is now available.', is_read: true, notification_type: 'info', created_at: new Date(Date.now() - 172800000).toISOString() },
-]
+interface Notification {
+  id: string
+  title: string
+  message: string
+  is_read: boolean
+  notification_type: 'success' | 'warning' | 'info'
+  created_at: string
+}
 
 const typeConfig = {
   success: { icon: CheckCircle, color: 'text-green-500', bg: 'bg-green-50' },
@@ -19,13 +21,18 @@ const typeConfig = {
 }
 
 export default function NotificationsPage() {
-  const [notifications, setNotifications] = useState(mockNotifications)
+  const [notifications, setNotifications] = useState<Notification[]>([])
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     async function fetchNotifications() {
+      setLoading(true)
       try {
         const { data: { session } } = await supabase.auth.getSession()
-        if (!session) return
+        if (!session) {
+          setNotifications([])
+          return
+        }
 
         const { data: profile } = await supabase
           .from('user_profiles')
@@ -33,7 +40,10 @@ export default function NotificationsPage() {
           .eq('auth_user_id', session.user.id)
           .single()
 
-        if (!profile?.id) return
+        if (!profile?.id) {
+          setNotifications([])
+          return
+        }
 
         const { data } = await supabase
           .from('notifications')
@@ -41,9 +51,9 @@ export default function NotificationsPage() {
           .eq('user_profile_id', profile.id)
           .order('created_at', { ascending: false })
 
-        if (data && data.length > 0) setNotifications(data)
-      } catch {
-        // keep mock fallback
+        setNotifications((data ?? []) as Notification[])
+      } finally {
+        setLoading(false)
       }
     }
 
@@ -54,10 +64,15 @@ export default function NotificationsPage() {
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n))
     await supabase.from('notifications').update({ is_read: true }).eq('id', id)
   }
+
   async function markAllRead() {
+    const unreadIds = notifications.filter((n) => !n.is_read).map((n) => n.id)
+    if (unreadIds.length === 0) return
+
     setNotifications(prev => prev.map(n => ({ ...n, is_read: true })))
-    await supabase.from('notifications').update({ is_read: true }).eq('is_read', false)
+    await supabase.from('notifications').update({ is_read: true }).in('id', unreadIds)
   }
+
   async function dismiss(id: string) {
     setNotifications(prev => prev.filter(n => n.id !== id))
     await supabase.from('notifications').delete().eq('id', id)
@@ -79,11 +94,13 @@ export default function NotificationsPage() {
         )}
       </div>
 
-      {notifications.length === 0 ? (
+      {loading ? (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-12 text-center text-gray-400">Loading notifications...</div>
+      ) : notifications.length === 0 ? (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-12 text-center">
           <Bell className="w-12 h-12 text-gray-200 mx-auto mb-4" />
-          <p className="text-gray-400 font-medium">No notifications</p>
-          <p className="text-gray-300 text-sm mt-1">You&apos;re all caught up!</p>
+          <p className="text-gray-500 font-medium">No notifications yet</p>
+          <p className="text-gray-400 text-sm mt-1">New account activity and alerts will appear here.</p>
         </div>
       ) : (
         <div className="space-y-3">

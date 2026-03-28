@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
-import { LayoutDashboard, User, Shield, Bell, LogOut, Menu, X, ChevronRight, CreditCard } from 'lucide-react'
+import { LayoutDashboard, User, Shield, Bell, LogOut, Menu, X, ChevronRight, CreditCard, LifeBuoy, ArrowRightLeft } from 'lucide-react'
 
 const navItems = [
   { label: 'Overview', href: '/dashboard', icon: LayoutDashboard, exact: true },
@@ -12,6 +12,8 @@ const navItems = [
   { label: 'Profile', href: '/dashboard/profile', icon: User },
   { label: 'Security', href: '/dashboard/security', icon: Shield },
   { label: 'Notifications', href: '/dashboard/notifications', icon: Bell },
+  { label: 'Support Messages', href: '/dashboard/support', icon: LifeBuoy },
+  { label: 'Withdraw Funds', href: '/dashboard/withdraw', icon: ArrowRightLeft },
 ]
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {

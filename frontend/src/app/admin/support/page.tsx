@@ -2,14 +2,22 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { formatDate } from '@/lib/utils'
-import { LifeBuoy, Send, RefreshCw } from 'lucide-react'
+import { LifeBuoy, Send, RefreshCw, PlusCircle } from 'lucide-react'
+
+interface UserProfile {
+  id: string
+  user_id?: string
+  full_name?: string
+  email?: string
+  status?: string
+}
 
 interface Conversation {
   id: string
   subject: string
   status: 'open' | 'closed'
   updated_at: string
-  user_profiles?: { full_name?: string; user_id?: string; email?: string }
+  user_profiles?: UserProfile
 }
 
 interface Message {
@@ -21,26 +29,34 @@ interface Message {
 
 export default function AdminSupportPage() {
   const [conversations, setConversations] = useState<Conversation[]>([])
+  const [approvedUsers, setApprovedUsers] = useState<UserProfile[]>([])
   const [activeId, setActiveId] = useState('')
   const [messages, setMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState(true)
   const [draft, setDraft] = useState('')
+  const [selectedUser, setSelectedUser] = useState('')
+  const [newSubject, setNewSubject] = useState('')
+  const [newMessage, setNewMessage] = useState('')
+
+  async function fetchConversations() {
+    setLoading(true)
+    try {
+      const res = await fetch('/api/admin/support/conversations', { credentials: 'include' })
+      const payload = await res.json()
+      if (res.ok && payload?.ok) {
+        const list = payload.conversations ?? []
+        const users = payload.approvedUsers ?? []
+        setConversations(list)
+        setApprovedUsers(users)
+        if (!activeId && list[0]?.id) setActiveId(list[0].id)
+        if (!selectedUser && users[0]?.id) setSelectedUser(users[0].id)
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
-    async function fetchConversations() {
-      setLoading(true)
-      try {
-        const res = await fetch('/api/admin/support/conversations', { credentials: 'include' })
-        const payload = await res.json()
-        if (res.ok && payload?.ok) {
-          const list = payload.conversations ?? []
-          setConversations(list)
-          if (!activeId && list[0]?.id) setActiveId(list[0].id)
-        }
-      } finally {
-        setLoading(false)
-      }
-    }
     fetchConversations()
   }, [])
 
@@ -54,7 +70,32 @@ export default function AdminSupportPage() {
     fetchMessages()
   }, [activeId])
 
-  const active = useMemo(() => conversations.find((c) => c.id === activeId), [conversations, activeId])
+  const active = useMemo(() => conversations.find((conversation) => conversation.id === activeId), [conversations, activeId])
+
+  async function createConversation() {
+    if (!selectedUser) return
+
+    const res = await fetch('/api/admin/support/conversations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        userProfileId: selectedUser,
+        subject: newSubject.trim() || 'Support Request',
+        message: newMessage.trim(),
+      }),
+    })
+
+    const payload = await res.json()
+    if (res.ok && payload?.ok) {
+      const created = payload.conversation as Conversation
+      setConversations((prev) => [created, ...prev])
+      setActiveId(created.id)
+      setMessages([])
+      setNewSubject('')
+      setNewMessage('')
+    }
+  }
 
   async function sendReply() {
     if (!draft.trim() || !activeId) return
@@ -81,7 +122,7 @@ export default function AdminSupportPage() {
       credentials: 'include',
     })
     if (res.ok) {
-      setConversations((prev) => prev.map((c) => (c.id === active.id ? { ...c, status: nextStatus } : c)))
+      setConversations((prev) => prev.map((conversation) => (conversation.id === active.id ? { ...conversation, status: nextStatus } : conversation)))
     }
   }
 
@@ -92,8 +133,43 @@ export default function AdminSupportPage() {
           <h1 className="font-heading font-bold text-2xl text-[#0B2447]">Support Inbox</h1>
           <p className="text-gray-500 text-sm mt-1">Monitor customer conversations and reply from one place</p>
         </div>
-        <button onClick={() => window.location.reload()} className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-[#0B2447] border border-gray-200 rounded-lg px-3 py-2 transition-all">
+        <button onClick={fetchConversations} className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-[#0B2447] border border-gray-200 rounded-lg px-3 py-2 transition-all">
           <RefreshCw className="w-4 h-4" /> Refresh
+        </button>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-3">
+        <h2 className="font-heading font-bold text-[#0B2447] text-sm">Start Conversation with Approved User</h2>
+        <div className="grid md:grid-cols-[1.2fr,1fr] gap-3">
+          <select
+            value={selectedUser}
+            onChange={(event) => setSelectedUser(event.target.value)}
+            className="border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-[#1565C0] focus:border-transparent outline-none"
+          >
+            {approvedUsers.map((user) => (
+              <option key={user.id} value={user.id}>{user.full_name || user.email || user.user_id || 'Unknown user'}</option>
+            ))}
+          </select>
+          <input
+            value={newSubject}
+            onChange={(event) => setNewSubject(event.target.value)}
+            placeholder="Subject"
+            className="border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-[#1565C0] focus:border-transparent outline-none"
+          />
+        </div>
+        <textarea
+          value={newMessage}
+          onChange={(event) => setNewMessage(event.target.value)}
+          placeholder="Optional opening message"
+          rows={2}
+          className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-[#1565C0] focus:border-transparent outline-none resize-none"
+        />
+        <button
+          onClick={createConversation}
+          disabled={!selectedUser}
+          className="inline-flex items-center gap-2 bg-[#0B2447] text-white px-4 py-2.5 rounded-xl text-sm font-semibold hover:bg-[#06162c] disabled:opacity-50"
+        >
+          <PlusCircle className="w-4 h-4" /> Create Conversation
         </button>
       </div>
 
@@ -151,7 +227,7 @@ export default function AdminSupportPage() {
           <div className="p-4 border-t border-gray-100 bg-white flex items-end gap-2">
             <textarea
               value={draft}
-              onChange={(e) => setDraft(e.target.value)}
+              onChange={(event) => setDraft(event.target.value)}
               placeholder="Type a reply..."
               className="flex-1 border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-[#1565C0] focus:border-transparent outline-none resize-none"
               rows={2}
