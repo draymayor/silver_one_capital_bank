@@ -60,7 +60,7 @@ export async function PATCH(
         .eq('application_id', applicationId)
         .maybeSingle()
 
-      userId = existingProfile.data?.user_id ?? generateUserId()
+      userId = existingProfile.data?.user_id ?? application.step_data?.auth?.userId ?? generateUserId()
 
       if (!existingProfile.data) {
         const authUserId = application.step_data?.auth?.authUserId as string | undefined
