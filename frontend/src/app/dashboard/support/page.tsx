@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import { LifeBuoy, Send } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { LifeBuoy, Send, AlertCircle } from 'lucide-react'
 import { formatDate } from '@/lib/utils'
 import { supabase } from '@/lib/supabase/client'
 
@@ -20,7 +20,6 @@ interface Message {
 }
 
 export default function DashboardSupportPage() {
-  const [token, setToken] = useState('')
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeId, setActiveId] = useState('')
   const [messages, setMessages] = useState<Message[]>([])
@@ -28,45 +27,92 @@ export default function DashboardSupportPage() {
   const [subject, setSubject] = useState('')
   const [newMessage, setNewMessage] = useState('')
   const [reply, setReply] = useState('')
+  const [authReady, setAuthReady] = useState(false)
+  const [error, setError] = useState('')
+
+  const fetchConversations = useCallback(async (options?: { silent?: boolean }) => {
+    if (!options?.silent) setLoading(true)
+
+    try {
+      const res = await fetch('/api/support/conversations', { credentials: 'include' })
+      const payload = await res.json().catch(() => null)
+
+      if (!res.ok || !payload?.ok) {
+        const message = payload?.error || 'Failed to load support conversations.'
+        setError(message)
+        return
+      }
+
+      const list = (payload.conversations ?? []) as Conversation[]
+      setError('')
+      setConversations(list)
+      setActiveId((current) => {
+        if (current && list.some((conversation) => conversation.id === current)) {
+          return current
+        }
+        return list[0]?.id || ''
+      })
+    } finally {
+      if (!options?.silent) setLoading(false)
+    }
+  }, [])
+
+  const fetchMessages = useCallback(async (conversationId: string) => {
+    if (!conversationId) return
+
+    const res = await fetch(`/api/support/conversations/${conversationId}/messages`, { credentials: 'include' })
+    const payload = await res.json().catch(() => null)
+
+    if (!res.ok || !payload?.ok) {
+      setError(payload?.error || 'Failed to load support messages.')
+      return
+    }
+
+    setError('')
+    setMessages(payload.messages ?? [])
+  }, [])
 
   useEffect(() => {
     async function bootstrap() {
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.access_token) {
+      if (!session) {
         setLoading(false)
+        setAuthReady(false)
+        setError('No active customer session found. Please sign in again.')
         return
       }
 
-      setToken(session.access_token)
-
-      const res = await fetch('/api/support/conversations', {
-        headers: { Authorization: `Bearer ${session.access_token}` },
-      })
-      const payload = await res.json()
-      if (res.ok && payload?.ok) {
-        const list = payload.conversations ?? []
-        setConversations(list)
-        if (list[0]?.id) setActiveId(list[0].id)
-      }
-
-      setLoading(false)
+      setAuthReady(true)
+      await fetchConversations()
     }
 
     bootstrap()
-  }, [])
+  }, [fetchConversations])
 
   useEffect(() => {
-    async function loadMessages() {
-      if (!activeId || !token) return
-      const res = await fetch(`/api/support/conversations/${activeId}/messages`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      const payload = await res.json()
-      if (res.ok && payload?.ok) setMessages(payload.messages ?? [])
+    if (!authReady) return
+
+    const interval = setInterval(() => {
+      void fetchConversations({ silent: true })
+    }, 5000)
+
+    return () => clearInterval(interval)
+  }, [authReady, fetchConversations])
+
+  useEffect(() => {
+    if (!authReady || !activeId) {
+      setMessages([])
+      return
     }
 
-    loadMessages()
-  }, [activeId, token])
+    void fetchMessages(activeId)
+
+    const interval = setInterval(() => {
+      void fetchMessages(activeId)
+    }, 3000)
+
+    return () => clearInterval(interval)
+  }, [authReady, activeId, fetchMessages])
 
   const activeConversation = useMemo(
     () => conversations.find((conversation) => conversation.id === activeId),
@@ -74,41 +120,45 @@ export default function DashboardSupportPage() {
   )
 
   async function startConversation() {
-    if (!token || !newMessage.trim()) return
+    if (!newMessage.trim()) return
 
     const res = await fetch('/api/support/conversations', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
       },
+      credentials: 'include',
       body: JSON.stringify({ subject: subject.trim() || 'Support Request', message: newMessage.trim() }),
     })
 
-    const payload = await res.json()
+    const payload = await res.json().catch(() => null)
     if (res.ok && payload?.ok) {
       const created = payload.conversation as Conversation
-      setConversations((prev) => [created, ...prev])
+      setConversations((prev) => [created, ...prev.filter((conversation) => conversation.id !== created.id)])
       setActiveId(created.id)
       setMessages(payload.message ? [payload.message] : [])
       setSubject('')
       setNewMessage('')
+      setError('')
+      return
     }
+
+    setError(payload?.error || 'Failed to start support conversation.')
   }
 
   async function sendReply() {
-    if (!token || !activeId || !reply.trim()) return
+    if (!activeId || !reply.trim()) return
 
     const res = await fetch(`/api/support/conversations/${activeId}/messages`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
       },
+      credentials: 'include',
       body: JSON.stringify({ message: reply.trim() }),
     })
 
-    const payload = await res.json()
+    const payload = await res.json().catch(() => null)
     if (res.ok && payload?.ok) {
       setMessages((prev) => [...prev, payload.message])
       setReply('')
@@ -117,7 +167,11 @@ export default function DashboardSupportPage() {
           ? { ...conversation, updated_at: new Date().toISOString(), status: 'open' }
           : conversation
       )))
+      setError('')
+      return
     }
+
+    setError(payload?.error || 'Failed to send support message.')
   }
 
   return (
@@ -126,6 +180,13 @@ export default function DashboardSupportPage() {
         <h1 className="font-heading font-bold text-2xl text-[#0B2447]">Support Messages</h1>
         <p className="text-gray-500 text-sm mt-1">Chat with customer support and track all your conversations.</p>
       </div>
+
+      {error && (
+        <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl p-4">
+          <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+          <p className="text-red-700 text-sm">{error}</p>
+        </div>
+      )}
 
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-3">
         <h2 className="font-heading font-bold text-[#0B2447] text-base">Start a New Support Conversation</h2>
@@ -144,7 +205,7 @@ export default function DashboardSupportPage() {
         />
         <button
           onClick={startConversation}
-          disabled={!newMessage.trim()}
+          disabled={!newMessage.trim() || !authReady}
           className="inline-flex items-center gap-2 bg-[#0B2447] text-white px-4 py-2.5 rounded-xl text-sm font-semibold hover:bg-[#06162c] disabled:opacity-50"
         >
           <Send className="w-4 h-4" /> Send Message
@@ -204,11 +265,11 @@ export default function DashboardSupportPage() {
               placeholder="Type your reply..."
               className="flex-1 border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-[#1565C0] focus:border-transparent outline-none resize-none"
               rows={2}
-              disabled={!activeConversation || activeConversation.status === 'closed'}
+              disabled={!activeConversation || activeConversation.status === 'closed' || !authReady}
             />
             <button
               onClick={sendReply}
-              disabled={!activeConversation || activeConversation.status === 'closed' || !reply.trim()}
+              disabled={!activeConversation || activeConversation.status === 'closed' || !reply.trim() || !authReady}
               className="inline-flex items-center gap-1.5 bg-[#0B2447] text-white px-4 py-2.5 rounded-xl text-sm font-semibold hover:bg-[#06162c] disabled:opacity-50"
             >
               <Send className="w-4 h-4" /> Send
