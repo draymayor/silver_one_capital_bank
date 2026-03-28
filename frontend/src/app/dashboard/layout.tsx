@@ -21,24 +21,43 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const router = useRouter()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [userProfile, setUserProfile] = useState<{ full_name: string; user_id: string } | null>(null)
+  const [authError, setAuthError] = useState('')
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (!session) { router.push('/sign-in'); return }
-      try {
-        const { data } = await supabase.from('user_profiles').select('full_name,user_id').eq('auth_user_id', session.user.id).single()
-        if (data) setUserProfile(data)
-        else setUserProfile({ full_name: session.user.email?.split('@')[0] ?? 'Customer', user_id: session.user.email?.split('@')[0] ?? '' })
-      } catch {
-        setUserProfile({ full_name: 'Customer', user_id: '' })
+      if (!session) {
+        router.replace('/sign-in?error=session_expired')
+        return
       }
+
+      if (session.user.email === 'admin@silverunioncapital.com') {
+        await supabase.auth.signOut()
+        router.replace('/sign-in?error=customer_required')
+        return
+      }
+
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select('full_name,user_id')
+        .eq('auth_user_id', session.user.id)
+        .single()
+
+      if (error || !data) {
+        setAuthError('Unable to load your customer profile. Please sign in again.')
+        await supabase.auth.signOut()
+        router.replace('/sign-in?error=profile_not_found')
+        return
+      }
+
+      setAuthError('')
+      setUserProfile(data)
     })
   }, [router])
 
   async function handleLogout() {
     await supabase.auth.signOut()
-    document.cookie = 'suc-session=; path=/; max-age=0'
-    router.push('/sign-in')
+    router.replace('/sign-in')
+    router.refresh()
   }
 
   function isActive(href: string, exact?: boolean) {
@@ -68,7 +87,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </div>
             <div>
               <p className="text-white font-semibold text-sm truncate">{userProfile?.full_name ?? 'Loading...'}</p>
-              <p className="text-white/50 text-xs">{userProfile?.user_id || 'Customer'}</p>
+              <p className="text-white/50 text-xs">{userProfile?.user_id || (authError ? 'Session issue' : 'Loading...')}</p>
             </div>
           </div>
         </div>

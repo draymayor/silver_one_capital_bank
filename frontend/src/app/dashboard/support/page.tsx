@@ -34,7 +34,7 @@ export default function DashboardSupportPage() {
     if (!options?.silent) setLoading(true)
 
     try {
-      const res = await fetch('/api/support/conversations', { credentials: 'include' })
+      const res = await fetch('/api/support/conversations', { credentials: 'include', cache: 'no-store' })
       const payload = await res.json().catch(() => null)
 
       if (!res.ok || !payload?.ok) {
@@ -60,7 +60,7 @@ export default function DashboardSupportPage() {
   const fetchMessages = useCallback(async (conversationId: string) => {
     if (!conversationId) return
 
-    const res = await fetch(`/api/support/conversations/${conversationId}/messages`, { credentials: 'include' })
+    const res = await fetch(`/api/support/conversations/${conversationId}/messages`, { credentials: 'include', cache: 'no-store' })
     const payload = await res.json().catch(() => null)
 
     if (!res.ok || !payload?.ok) {
@@ -94,7 +94,7 @@ export default function DashboardSupportPage() {
 
     const interval = setInterval(() => {
       void fetchConversations({ silent: true })
-    }, 5000)
+    }, 3000)
 
     return () => clearInterval(interval)
   }, [authReady, fetchConversations])
@@ -109,10 +109,22 @@ export default function DashboardSupportPage() {
 
     const interval = setInterval(() => {
       void fetchMessages(activeId)
-    }, 3000)
+    }, 2000)
 
-    return () => clearInterval(interval)
-  }, [authReady, activeId, fetchMessages])
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'visible') {
+        void fetchMessages(activeId)
+        void fetchConversations({ silent: true })
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      clearInterval(interval)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [authReady, activeId, fetchMessages, fetchConversations])
 
   const activeConversation = useMemo(
     () => conversations.find((conversation) => conversation.id === activeId),
@@ -140,6 +152,8 @@ export default function DashboardSupportPage() {
       setSubject('')
       setNewMessage('')
       setError('')
+      void fetchConversations({ silent: true })
+      void fetchMessages(created.id)
       return
     }
 
@@ -168,6 +182,8 @@ export default function DashboardSupportPage() {
           : conversation
       )))
       setError('')
+      void fetchMessages(activeId)
+      void fetchConversations({ silent: true })
       return
     }
 

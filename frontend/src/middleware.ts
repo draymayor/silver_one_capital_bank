@@ -17,21 +17,13 @@ function clearStaleAdminCookies(request: NextRequest, response: NextResponse) {
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-  // Check dashboard routes — require customer session cookie
-  if (pathname.startsWith('/dashboard')) {
-    const sessionCookie = request.cookies.get('suc-session')
-    if (!sessionCookie) {
-      return NextResponse.redirect(new URL('/sign-in', request.url))
-    }
-  }
-
-  if (pathname.startsWith('/admin') && !pathname.startsWith('/admin/login')) {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-
+  if ((pathname.startsWith('/dashboard')) || (pathname.startsWith('/admin') && !pathname.startsWith('/admin/login'))) {
     if (!supabaseUrl || !anonKey) {
-      return NextResponse.redirect(new URL('/admin/login?error=server_config_missing', request.url))
+      const redirectTarget = pathname.startsWith('/admin') ? '/admin/login?error=server_config_missing' : '/sign-in?error=session_expired'
+      return NextResponse.redirect(new URL(redirectTarget, request.url))
     }
 
     const response = NextResponse.next()
@@ -53,9 +45,21 @@ export async function middleware(request: NextRequest) {
     const user = data.user
 
     if (error || !user) {
-      const redirect = NextResponse.redirect(new URL('/admin/login?error=session_expired', request.url))
+      const redirectTarget = pathname.startsWith('/admin') ? '/admin/login?error=session_expired' : '/sign-in?error=session_expired'
+      const redirect = NextResponse.redirect(new URL(redirectTarget, request.url))
       clearStaleAdminCookies(request, redirect)
       return redirect
+    }
+
+    if (pathname.startsWith('/dashboard')) {
+      if (user.email === ADMIN_EMAIL) {
+        await supabase.auth.signOut()
+        const redirect = NextResponse.redirect(new URL('/sign-in?error=customer_required', request.url))
+        clearStaleAdminCookies(request, redirect)
+        return redirect
+      }
+
+      return response
     }
 
     if (user.email !== ADMIN_EMAIL) {

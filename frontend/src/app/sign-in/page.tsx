@@ -6,15 +6,33 @@ import { Eye, EyeOff, Shield, Lock, AlertCircle } from 'lucide-react'
 import Navbar from '@/components/layout/Navbar'
 import Footer from '@/components/layout/Footer'
 import { supabase } from '@/lib/supabase/client'
-import { useRouter } from 'next/navigation'
+import { useEffect } from 'react'
+
+function mapQueryErrorToMessage(code: string | null) {
+  switch (code) {
+    case 'session_expired':
+      return 'Your session expired or is invalid. Please sign in again.'
+    case 'customer_required':
+      return 'This account cannot access the customer dashboard.'
+    case 'profile_not_found':
+      return 'We could not load your customer profile. Please contact support.'
+    default:
+      return ''
+  }
+}
 
 export default function SignInPage() {
-  const router = useRouter()
   const [userId, setUserId] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [authErrorFromQuery, setAuthErrorFromQuery] = useState('')
+
+  useEffect(() => {
+    const errorCode = new URLSearchParams(window.location.search).get('error')
+    setAuthErrorFromQuery(mapQueryErrorToMessage(errorCode))
+  }, [])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -32,9 +50,23 @@ export default function SignInPage() {
         setError('Invalid User ID or password. Please check your credentials and try again.')
         return
       }
-      // Set session cookie for middleware check
-      document.cookie = `suc-session=${data.session.access_token}; path=/; max-age=3600; SameSite=Lax`
-      router.push('/dashboard')
+
+      let hasPersistedSession = false
+      for (let attempt = 0; attempt < 6; attempt += 1) {
+        const { data: sessionData } = await supabase.auth.getSession()
+        if (sessionData.session) {
+          hasPersistedSession = true
+          break
+        }
+        await new Promise((resolve) => setTimeout(resolve, 100))
+      }
+
+      if (!hasPersistedSession) {
+        setError('Login succeeded, but your session did not persist. Please try again.')
+        return
+      }
+
+      window.location.assign('/dashboard')
     } catch {
       setError('An unexpected error occurred. Please try again.')
     } finally {
@@ -60,10 +92,10 @@ export default function SignInPage() {
 
             {/* Form */}
             <div className="px-8 py-8">
-              {error && (
+              {(error || authErrorFromQuery) && (
                 <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl p-4 mb-6" data-testid="signin-error">
                   <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
-                  <p className="text-red-700 text-sm">{error}</p>
+                  <p className="text-red-700 text-sm">{error || authErrorFromQuery}</p>
                 </div>
               )}
 
