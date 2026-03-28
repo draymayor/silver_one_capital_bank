@@ -2,6 +2,16 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { copyCookies, requireCustomerAuth } from '@/lib/customer-auth'
 
+function getWithdrawalInsertError(error: { code?: string; message?: string; details?: string | null; hint?: string | null } | null | undefined) {
+  if (!error) return 'Unable to submit withdrawal request at the moment.'
+
+  if (error.code === '23503') return 'Unable to submit withdrawal request because your account link is invalid. Please refresh and try again.'
+  if (error.code === '23514') return 'Unable to submit withdrawal request because one or more values did not pass validation.'
+  if (error.code === '22P02') return 'Unable to submit withdrawal request because the submitted format is invalid.'
+
+  return error.details || error.hint || error.message || 'Unable to submit withdrawal request at the moment.'
+}
+
 export async function GET(request: NextRequest) {
   try {
     const auth = await requireCustomerAuth(request)
@@ -43,8 +53,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Please enter a valid withdrawal amount.' }, { status: 400 })
     }
 
-    if (!bankName || !accountNumber || !routingNumber) {
+    const sanitizedBankName = typeof bankName === 'string' ? bankName.trim() : ''
+    const sanitizedAccountNumber = typeof accountNumber === 'string' ? accountNumber.trim() : ''
+    const sanitizedRoutingNumber = typeof routingNumber === 'string' ? routingNumber.trim() : ''
+    const sanitizedMemo = typeof memo === 'string' ? memo.trim() || null : null
+
+    if (!sanitizedBankName || !sanitizedAccountNumber || !sanitizedRoutingNumber) {
       return NextResponse.json({ error: 'Bank, account number, and routing number are required.' }, { status: 400 })
+    }
+
+    if (!/^\d{9}$/.test(sanitizedRoutingNumber)) {
+      return NextResponse.json({ error: 'Routing number must be exactly 9 digits.' }, { status: 400 })
     }
 
     const { data: profile } = await supabaseAdmin
@@ -78,17 +97,19 @@ export async function POST(request: NextRequest) {
           user_profile_id: profile.id,
           account_id: account.id,
           amount: parsedAmount,
-          bank_name: String(bankName).trim(),
-          account_number: String(accountNumber).trim(),
-          routing_number: String(routingNumber).trim(),
-          memo: typeof memo === 'string' ? memo.trim() || null : null,
+          bank_name: sanitizedBankName,
+          account_number: sanitizedAccountNumber,
+          routing_number: sanitizedRoutingNumber,
+          memo: sanitizedMemo,
           status: 'pending',
         },
       ])
       .select('*')
       .single()
 
-    if (error || !created) return NextResponse.json({ error: 'Unable to submit withdrawal request right now.' }, { status: 500 })
+    if (error || !created) {
+      return NextResponse.json({ error: getWithdrawalInsertError(error) }, { status: 500 })
+    }
 
     const response = NextResponse.json({ ok: true, request: created })
     copyCookies(auth.response, response)

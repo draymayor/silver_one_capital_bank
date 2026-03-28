@@ -5,6 +5,11 @@ import { supabaseAdmin } from '@/lib/supabase/server'
 const CREDIT_TYPES = new Set(['deposit', 'interest', 'refund', 'credit_adjustment'])
 const DEBIT_TYPES = new Set(['withdrawal', 'fee', 'debit_adjustment'])
 
+function getDbErrorMessage(error: { message?: string; details?: string | null; hint?: string | null } | null | undefined) {
+  if (!error) return null
+  return error.details || error.hint || error.message || null
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } },
@@ -52,28 +57,52 @@ export async function POST(
       return NextResponse.json({ error: 'Insufficient balance for this transaction.' }, { status: 400 })
     }
 
-    const [{ data: transaction, error: txError }, { error: updateError }] = await Promise.all([
-      supabaseAdmin
-        .from('transactions')
-        .insert([
-          {
-            user_profile_id: params.id,
-            account_id: account.id,
-            amount: parsedAmount,
-            transaction_type: type,
-            direction: delta >= 0 ? 'credit' : 'debit',
-            description: typeof description === 'string' ? description.trim() || null : null,
-            status: 'completed',
-            processed_at: new Date().toISOString(),
-          },
-        ])
-        .select('*')
-        .single(),
-      supabaseAdmin.from('accounts').update({ balance: nextBalance }).eq('id', account.id),
-    ])
+    const { data: transaction, error: txError } = await supabaseAdmin
+      .from('transactions')
+      .insert([
+        {
+          user_profile_id: params.id,
+          account_id: account.id,
+          amount: parsedAmount,
+          transaction_type: type,
+          direction: delta >= 0 ? 'credit' : 'debit',
+          description: typeof description === 'string' ? description.trim() || null : null,
+          status: 'completed',
+          processed_at: new Date().toISOString(),
+        },
+      ])
+      .select('*')
+      .single()
 
-    if (txError || updateError || !transaction) {
-      return NextResponse.json({ error: 'Failed to add transaction.' }, { status: 500 })
+    if (txError || !transaction) {
+      return NextResponse.json(
+        { error: getDbErrorMessage(txError) || 'Failed to insert transaction record.' },
+        { status: 500 },
+      )
+    }
+
+    const { data: updatedAccount, error: updateError } = await supabaseAdmin
+      .from('accounts')
+      .update({ balance: nextBalance })
+      .eq('id', account.id)
+      .eq('balance', currentBalance)
+      .select('id,balance')
+      .maybeSingle()
+
+    if (updateError || !updatedAccount?.id) {
+      const { error: rollbackError } = await supabaseAdmin
+        .from('transactions')
+        .delete()
+        .eq('id', transaction.id)
+
+      return NextResponse.json(
+        {
+          error: rollbackError
+            ? `Failed to update account balance and failed to roll back transaction: ${getDbErrorMessage(rollbackError) || 'unknown rollback error'}`
+            : getDbErrorMessage(updateError) || 'Failed to update account balance.',
+        },
+        { status: 500 },
+      )
     }
 
     await supabaseAdmin.from('audit_logs').insert([
