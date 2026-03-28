@@ -38,7 +38,13 @@ export async function GET(
       .select('*')
       .eq('application_id', params.id)
 
-    return NextResponse.json({ ok: true, application, docs: docs ?? [] })
+    const { data: profile } = await supabaseAdmin
+      .from('user_profiles')
+      .select('user_id')
+      .eq('application_id', params.id)
+      .maybeSingle()
+
+    return NextResponse.json({ ok: true, application: { ...application, user_id: profile?.user_id ?? null }, docs: docs ?? [] })
   } catch {
     return NextResponse.json({ error: 'Unexpected server error.' }, { status: 500 })
   }

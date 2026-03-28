@@ -156,19 +156,26 @@ export default function OpenAccountPage() {
   async function handleFileUpload(type: 'passport' | 'id' | 'doc', file: File) {
     const docType = type === 'passport' ? 'passport_photo' : type === 'id' ? 'means_of_id' : 'supporting_doc'
     const setLoading = type === 'passport' ? setUploadingPassport : type === 'id' ? setUploadingId : setUploadingDoc
+    const nameKey = type === 'passport' ? 'passportPhotoName' : type === 'id' ? 'meansOfIdName' : 'supportingDocName'
+    const pathKey = type === 'passport' ? 'passportPhotoPath' : type === 'id' ? 'meansOfIdPath' : 'supportingDocPath'
+    const errKey = type === 'passport' ? 'kyc.passportPhotoName' : type === 'id' ? 'kyc.meansOfIdName' : 'kyc.supportingDocName'
+
     setLoading(true)
     try {
-      let path = ''
-      try {
-        path = await uploadFile(file, docType)
-      } catch {
-        // Storage bucket may not be set up yet — store file name only
-        path = `pending-upload/${file.name}`
-      }
-      const nameKey = type === 'passport' ? 'passportPhotoName' : type === 'id' ? 'meansOfIdName' : 'supportingDocName'
-      const pathKey = type === 'passport' ? 'passportPhotoPath' : type === 'id' ? 'meansOfIdPath' : 'supportingDocPath'
+      const path = await uploadFile(file, docType)
       updateField('kyc', nameKey, file.name)
       updateField('kyc', pathKey, path)
+      setErrors(prev => {
+        if (!prev[errKey]) return prev
+        const next = { ...prev }
+        delete next[errKey]
+        return next
+      })
+    } catch (error) {
+      updateField('kyc', nameKey, '')
+      updateField('kyc', pathKey, '')
+      const message = error instanceof Error ? error.message : 'Document upload failed.'
+      setErrors(prev => ({ ...prev, [errKey]: `Upload failed: ${message}` }))
     } finally {
       setLoading(false)
     }
@@ -188,7 +195,7 @@ export default function OpenAccountPage() {
         contact: formData.contact,
         nextOfKin: formData.nextOfKin,
         accountDetails: formData.accountDetails,
-        kyc: { ...formData.kyc, ssn: formData.kyc.ssn.replace(/\d(?=\d{4})/g, '*') },
+        kyc: formData.kyc,
       }
       const docs = []
       if (formData.kyc.passportPhotoPath) docs.push({ document_type: 'passport_photo', file_name: formData.kyc.passportPhotoName, storage_path: formData.kyc.passportPhotoPath })
@@ -210,8 +217,9 @@ export default function OpenAccountPage() {
 
       setApplicationId(payload.id)
       setSubmitted(true)
-    } catch {
-      setErrors({ submit: 'Failed to submit application. Please try again.' })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to submit application. Please try again.'
+      setErrors({ submit: message })
     } finally {
       setSubmitting(false)
     }
@@ -455,7 +463,7 @@ export default function OpenAccountPage() {
                 {[
                   { label: 'Passport Photograph', key: 'passport' as const, ref: passportRef, name: formData.kyc.passportPhotoName, loading: uploadingPassport, required: true, errKey: 'kyc.passportPhotoName' },
                   { label: 'Government-issued ID', key: 'id' as const, ref: idRef, name: formData.kyc.meansOfIdName, loading: uploadingId, required: true, errKey: 'kyc.meansOfIdName' },
-                  { label: 'Supporting Document (Optional)', key: 'doc' as const, ref: docRef, name: formData.kyc.supportingDocName, loading: uploadingDoc, required: false, errKey: '' },
+                  { label: 'Supporting Document (Optional)', key: 'doc' as const, ref: docRef, name: formData.kyc.supportingDocName, loading: uploadingDoc, required: false, errKey: 'kyc.supportingDocName' },
                 ].map(({ label, key, ref, name, loading, required, errKey }) => (
                   <div key={key}>
                     <label className="block text-sm font-semibold text-[#0B2447] mb-1.5">
@@ -487,7 +495,14 @@ export default function OpenAccountPage() {
                             <p className="text-sm font-medium text-green-700">{name}</p>
                             <p className="text-xs text-green-600">Uploaded successfully</p>
                           </div>
-                          <button onClick={e => { e.stopPropagation(); updateField('kyc', key === 'passport' ? 'passportPhotoName' : key === 'id' ? 'meansOfIdName' : 'supportingDocName', ''); }} className="ml-2 text-gray-400 hover:text-red-500">
+                          <button
+                            onClick={e => {
+                              e.stopPropagation()
+                              updateField('kyc', key === 'passport' ? 'passportPhotoName' : key === 'id' ? 'meansOfIdName' : 'supportingDocName', '')
+                              updateField('kyc', key === 'passport' ? 'passportPhotoPath' : key === 'id' ? 'meansOfIdPath' : 'supportingDocPath', '')
+                            }}
+                            className="ml-2 text-gray-400 hover:text-red-500"
+                          >
                             <X className="w-4 h-4" />
                           </button>
                         </div>
@@ -499,7 +514,7 @@ export default function OpenAccountPage() {
                         </div>
                       )}
                     </div>
-                    {errKey && errors[errKey] && <p className="text-red-500 text-xs mt-1">{errors[errKey]}</p>}
+                    {errors[errKey] && <p className="text-red-500 text-xs mt-1">{errors[errKey]}</p>}
                   </div>
                 ))}
               </div>
