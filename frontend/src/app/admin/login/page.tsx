@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
 import { Shield, Eye, EyeOff, AlertCircle } from 'lucide-react'
 
@@ -19,8 +18,6 @@ function mapQueryErrorToMessage(code: string | null) {
 }
 
 export default function AdminLoginPage() {
-  const router = useRouter()
-
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPw, setShowPw] = useState(false)
@@ -57,7 +54,23 @@ export default function AdminLoginPage() {
         return
       }
 
-      router.push('/admin')
+      let hasPersistedSession = false
+      for (let attempt = 0; attempt < 6; attempt += 1) {
+        const { data: sessionData } = await supabase.auth.getSession()
+        if (sessionData.session) {
+          hasPersistedSession = true
+          break
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 100))
+      }
+
+      if (!hasPersistedSession) {
+        setError('Login succeeded, but your session did not persist. Please try again.')
+        return
+      }
+
+      window.location.assign('/admin')
     } catch (unexpectedError) {
       if (unexpectedError instanceof Error && unexpectedError.message) {
         setError(unexpectedError.message)
