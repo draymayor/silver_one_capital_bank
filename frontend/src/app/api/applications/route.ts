@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { generateUserId } from '@/lib/utils'
 
 export async function POST(request: NextRequest) {
   try {
@@ -25,7 +26,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Password must be at least 8 characters.' }, { status: 400 })
     }
 
-    const tempEmail = `pending-${Date.now()}-${Math.floor(Math.random() * 100000)}@silverunioncapital.com`
+    const userId = generateUserId()
+    const tempEmail = `${userId}@silverunioncapital.com`
     const { data: authUser, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email: tempEmail,
       password,
@@ -44,6 +46,7 @@ export async function POST(request: NextRequest) {
       auth: {
         authUserId: authUser.user.id,
         onboardingEmail: stepData?.contact?.email ?? null,
+        userId,
       },
     }
 
@@ -66,7 +69,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ ok: true, id: data.id, documentsSaved })
+    return NextResponse.json({ ok: true, id: data.id, userId, documentsSaved })
   } catch {
     return NextResponse.json({ error: 'Unexpected server error.' }, { status: 500 })
   }

@@ -86,6 +86,38 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+
+-- Transactions table
+CREATE TABLE IF NOT EXISTS transactions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_profile_id UUID NOT NULL REFERENCES user_profiles(id) ON DELETE CASCADE,
+  account_id UUID REFERENCES accounts(id) ON DELETE SET NULL,
+  amount NUMERIC(15,2) NOT NULL,
+  transaction_type TEXT NOT NULL,
+  direction TEXT NOT NULL CHECK (direction IN ('credit', 'debit')),
+  description TEXT,
+  status TEXT NOT NULL DEFAULT 'completed' CHECK (status IN ('pending', 'completed', 'failed')),
+  withdrawal_request_id UUID,
+  processed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Withdrawal requests table
+CREATE TABLE IF NOT EXISTS withdrawal_requests (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_profile_id UUID NOT NULL REFERENCES user_profiles(id) ON DELETE CASCADE,
+  account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  amount NUMERIC(15,2) NOT NULL,
+  bank_name TEXT NOT NULL,
+  account_number TEXT NOT NULL,
+  routing_number TEXT NOT NULL,
+  memo TEXT,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+  reviewed_at TIMESTAMPTZ,
+  reviewed_by TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- Support Conversations (for second pass)
 CREATE TABLE IF NOT EXISTS support_conversations (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -139,6 +171,8 @@ ALTER TABLE accounts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin_notes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE withdrawal_requests ENABLE ROW LEVEL SECURITY;
 
 -- Allow service role full access (no policy needed — service role bypasses RLS)
 -- Allow anon to INSERT applications (account opening)
@@ -163,6 +197,33 @@ CREATE POLICY "Users read own notifications"
 CREATE POLICY "Users read own accounts"
   ON accounts FOR SELECT TO authenticated
   USING (
+    user_profile_id IN (
+      SELECT id FROM user_profiles WHERE auth_user_id = auth.uid()
+    )
+  );
+
+
+-- Allow authenticated users to read their own transactions
+CREATE POLICY "Users read own transactions"
+  ON transactions FOR SELECT TO authenticated
+  USING (
+    user_profile_id IN (
+      SELECT id FROM user_profiles WHERE auth_user_id = auth.uid()
+    )
+  );
+
+-- Allow authenticated users to read and create their own withdrawal requests
+CREATE POLICY "Users read own withdrawal requests"
+  ON withdrawal_requests FOR SELECT TO authenticated
+  USING (
+    user_profile_id IN (
+      SELECT id FROM user_profiles WHERE auth_user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Users create own withdrawal requests"
+  ON withdrawal_requests FOR INSERT TO authenticated
+  WITH CHECK (
     user_profile_id IN (
       SELECT id FROM user_profiles WHERE auth_user_id = auth.uid()
     )

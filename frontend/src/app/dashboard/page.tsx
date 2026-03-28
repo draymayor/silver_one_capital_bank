@@ -22,9 +22,20 @@ interface Account {
   status: string
 }
 
+
+interface Transaction {
+  id: string
+  amount: number
+  transaction_type: string
+  direction: 'credit' | 'debit'
+  created_at: string
+  description?: string
+}
+
 export default function DashboardPage() {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [accounts, setAccounts] = useState<Account[]>([])
+  const [transactions, setTransactions] = useState<Transaction[]>([])
 
   useEffect(() => {
     async function fetchData() {
@@ -38,9 +49,18 @@ export default function DashboardPage() {
         setProfile(profileData as Profile)
         const { data: accountData } = await supabase.from('accounts').select('*').eq('user_profile_id', profileData.id)
         setAccounts((accountData ?? []) as Account[])
+
+        const { data: transactionData } = await supabase
+          .from('transactions')
+          .select('id,amount,transaction_type,direction,created_at,description')
+          .eq('user_profile_id', profileData.id)
+          .order('created_at', { ascending: false })
+          .limit(8)
+        setTransactions((transactionData ?? []) as Transaction[])
       } catch {
         setProfile(null)
         setAccounts([])
+        setTransactions([])
       }
     }
 
@@ -126,7 +146,25 @@ export default function DashboardPage() {
             View accounts <ArrowRight className="w-3.5 h-3.5" />
           </Link>
         </div>
-        <div className="px-6 py-10 text-sm text-gray-500">Recent activity appears here after transactions are recorded.</div>
+        <div className="p-6">
+          {transactions.length === 0 ? (
+            <p className="text-sm text-gray-500">No transactions yet.</p>
+          ) : (
+            <div className="space-y-3">
+              {transactions.map((transaction) => (
+                <div key={transaction.id} className="flex items-center justify-between gap-3 border border-gray-100 rounded-xl px-4 py-3">
+                  <div>
+                    <p className="text-sm font-semibold text-[#0B2447] capitalize">{transaction.transaction_type.replace('_', ' ')}</p>
+                    <p className="text-xs text-gray-500">{formatDate(transaction.created_at)}{transaction.description ? ` • ${transaction.description}` : ''}</p>
+                  </div>
+                  <p className={`text-sm font-bold ${transaction.direction === 'credit' ? 'text-green-700' : 'text-red-700'}`}>
+                    {transaction.direction === 'credit' ? '+' : '-'}{formatCurrency(Number(transaction.amount))}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

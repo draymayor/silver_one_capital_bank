@@ -7,7 +7,7 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase/client'
 import {
   User, MapPin, Heart, Briefcase, FileCheck, Lock, Eye, EyeOff,
-  CheckCircle, Upload, X, AlertCircle, ChevronRight, ArrowLeft
+  CheckCircle, Upload, X, AlertCircle, ChevronRight, ArrowLeft, Copy, Check
 } from 'lucide-react'
 
 // Step definitions
@@ -73,7 +73,8 @@ export default function OpenAccountPage() {
   const [uploadingDoc, setUploadingDoc] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
-  const [applicationId, setApplicationId] = useState('')
+  const [assignedUserId, setAssignedUserId] = useState('')
+  const [copiedUserId, setCopiedUserId] = useState(false)
   const [agreed, setAgreed] = useState(false)
 
   const passportRef = useRef<HTMLInputElement>(null)
@@ -215,7 +216,7 @@ export default function OpenAccountPage() {
       const payload = await res.json()
       if (!res.ok || !payload?.ok) throw new Error(payload?.error || 'Submission failed')
 
-      setApplicationId(payload.id)
+      setAssignedUserId(payload.userId || '')
       setSubmitted(true)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to submit application. Please try again.'
@@ -240,12 +241,27 @@ export default function OpenAccountPage() {
             <p className="text-gray-600 text-base leading-relaxed mb-4">
               Thank you for applying to Silver Union Capital. Your application has been received and is currently <strong>under review</strong>.
             </p>
-            <div className="bg-[#F8F9FA] rounded-2xl p-5 mb-6 text-left border border-gray-200">
-              <p className="text-sm text-gray-600 font-medium mb-1">Reference Number</p>
-              <p className="font-mono font-bold text-[#0B2447] text-lg">{applicationId}</p>
+            <div className="bg-[#F8F9FA] rounded-2xl p-5 mb-4 text-left border border-gray-200">
+              <p className="text-sm text-gray-600 font-medium mb-1">Your User ID</p>
+              <div className="flex items-center justify-between gap-3">
+                <p className="font-mono font-bold text-[#0B2447] text-lg break-all">{assignedUserId}</p>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!assignedUserId) return
+                    await navigator.clipboard.writeText(assignedUserId)
+                    setCopiedUserId(true)
+                    setTimeout(() => setCopiedUserId(false), 1800)
+                  }}
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#1565C0] hover:text-[#0B2447] border border-[#1565C0]/25 rounded-lg px-2.5 py-1.5"
+                >
+                  {copiedUserId ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                  {copiedUserId ? 'Copied' : 'Copy'}
+                </button>
+              </div>
             </div>
             <p className="text-gray-500 text-sm leading-relaxed mb-8">
-              Our team will review your submitted information and documents. If approved, you will receive an email with your <strong>User ID</strong> and instructions to access your account. This process typically takes 1–3 business days.
+              Please copy and safely save this User ID now. You will need this same User ID to sign in after your account approval is completed.
             </p>
             <div className="flex flex-col sm:flex-row gap-3 justify-center">
               <Link href="/" className="btn-primary inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-semibold bg-[#0B2447] text-white hover:bg-[#06162c] transition-all">

@@ -1,13 +1,14 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import { formatDate, getStatusColor, getStatusLabel } from '@/lib/utils'
+import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { formatCurrency, formatDate, getStatusColor, getStatusLabel } from '@/lib/utils'
 import { Users, UserCheck, UserX, Search, RefreshCw, KeyRound } from 'lucide-react'
 
 interface AccountRecord {
   id: string
   account_type: string
   status: string
+  balance?: number
 }
 
 interface UserRecord {
@@ -21,32 +22,65 @@ interface UserRecord {
   accounts?: AccountRecord[]
 }
 
-const mockUsers: UserRecord[] = [
-  { id: '1', user_id: 'SUC-2024-100001', full_name: 'James Brown', email: 'james@example.com', phone: '+1 (555) 111-2222', status: 'active', created_at: new Date(Date.now() - 172800000).toISOString(), accounts: [{ id: 'a1', account_type: 'checking', status: 'active' }] },
-  { id: '2', user_id: 'SUC-2024-100002', full_name: 'Sarah Williams', email: 'sarah@example.com', phone: '+1 (555) 333-4444', status: 'active', created_at: new Date(Date.now() - 259200000).toISOString(), accounts: [{ id: 'a2', account_type: 'savings', status: 'active' }] },
-  { id: '3', user_id: 'SUC-2024-100003', full_name: 'Michael Johnson', email: 'michael@example.com', phone: '+1 (555) 555-6666', status: 'suspended', created_at: new Date(Date.now() - 345600000).toISOString(), accounts: [] },
+interface WithdrawalRequest {
+  id: string
+  amount: number
+  bank_name: string
+  account_number: string
+  status: 'pending' | 'approved' | 'rejected'
+  created_at: string
+  user_profiles?: {
+    full_name?: string
+    email?: string
+    user_id?: string
+  }
+}
+
+const transactionTypes = [
+  { value: 'deposit', label: 'Deposit' },
+  { value: 'interest', label: 'Interest' },
+  { value: 'refund', label: 'Refund' },
+  { value: 'credit_adjustment', label: 'Credit Adjustment' },
+  { value: 'withdrawal', label: 'Withdrawal' },
+  { value: 'fee', label: 'Fee' },
+  { value: 'debit_adjustment', label: 'Debit Adjustment' },
 ]
 
 export default function AdminUsersPage() {
-  const [users, setUsers] = useState<UserRecord[]>(mockUsers)
+  const [users, setUsers] = useState<UserRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [toast, setToast] = useState('')
+  const [selectedUser, setSelectedUser] = useState('')
+  const [amount, setAmount] = useState('')
+  const [type, setType] = useState('deposit')
+  const [description, setDescription] = useState('')
+  const [addingTransaction, setAddingTransaction] = useState(false)
+  const [withdrawalRequests, setWithdrawalRequests] = useState<WithdrawalRequest[]>([])
+
+  async function fetchUsers() {
+    setLoading(true)
+    try {
+      const res = await fetch('/api/admin/users', { credentials: 'include', cache: 'no-store' })
+      const payload = await res.json().catch(() => null)
+      if (res.ok && payload?.ok && Array.isArray(payload.users)) {
+        setUsers(payload.users)
+        setSelectedUser((current) => current || payload.users[0]?.id || '')
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function fetchWithdrawals() {
+    const res = await fetch('/api/admin/withdrawals', { credentials: 'include', cache: 'no-store' })
+    const payload = await res.json().catch(() => null)
+    if (res.ok && payload?.ok) setWithdrawalRequests(payload.requests ?? [])
+  }
 
   useEffect(() => {
-    async function fetchUsers() {
-      setLoading(true)
-      try {
-        const res = await fetch('/api/admin/users', { credentials: 'include' })
-        const payload = await res.json()
-        if (res.ok && payload?.ok && Array.isArray(payload.users) && payload.users.length > 0) {
-          setUsers(payload.users)
-        }
-      } finally {
-        setLoading(false)
-      }
-    }
-    fetchUsers()
+    void fetchUsers()
+    void fetchWithdrawals()
   }, [])
 
   function showToast(message: string) {
@@ -76,7 +110,7 @@ export default function AdminUsersPage() {
       method: 'POST',
       credentials: 'include',
     })
-    const payload = await res.json()
+    const payload = await res.json().catch(() => null)
 
     if (!res.ok || !payload?.ok) {
       showToast(payload?.error || 'Failed to reset password')
@@ -84,6 +118,52 @@ export default function AdminUsersPage() {
     }
 
     showToast(`Temporary password: ${payload.temporaryPassword}`)
+  }
+
+  async function handleAddTransaction(event: FormEvent) {
+    event.preventDefault()
+    if (!selectedUser || !amount) return
+
+    setAddingTransaction(true)
+    try {
+      const res = await fetch(`/api/admin/users/${selectedUser}/transactions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ amount, type, description }),
+      })
+      const payload = await res.json().catch(() => null)
+
+      if (!res.ok || !payload?.ok) {
+        showToast(payload?.error || 'Failed to add transaction')
+        return
+      }
+
+      setAmount('')
+      setDescription('')
+      showToast('Transaction added successfully')
+      await fetchUsers()
+    } finally {
+      setAddingTransaction(false)
+    }
+  }
+
+  async function handleWithdrawalDecision(requestId: string, status: 'approved' | 'rejected') {
+    const res = await fetch('/api/admin/withdrawals', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ requestId, status }),
+    })
+    const payload = await res.json().catch(() => null)
+
+    if (!res.ok || !payload?.ok) {
+      showToast(payload?.error || `Failed to ${status} request`)
+      return
+    }
+
+    showToast(`Withdrawal request ${status}`)
+    await Promise.all([fetchWithdrawals(), fetchUsers()])
   }
 
   const filteredUsers = useMemo(() => {
@@ -107,9 +187,9 @@ export default function AdminUsersPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="font-heading font-bold text-2xl text-[#0B2447]">Users</h1>
-          <p className="text-gray-500 text-sm mt-1">Manage customer accounts, status, and credentials</p>
+          <p className="text-gray-500 text-sm mt-1">Manage customer accounts, transactions, and withdrawal requests</p>
         </div>
-        <button onClick={() => window.location.reload()} className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-[#0B2447] border border-gray-200 rounded-lg px-3 py-2 transition-all">
+        <button onClick={() => { void fetchUsers(); void fetchWithdrawals() }} className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-[#0B2447] border border-gray-200 rounded-lg px-3 py-2 transition-all">
           <RefreshCw className="w-4 h-4" /> Refresh
         </button>
       </div>
@@ -131,6 +211,25 @@ export default function AdminUsersPage() {
           </div>
         ))}
       </div>
+
+      <form onSubmit={handleAddTransaction} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-3">
+        <h2 className="font-heading font-bold text-[#0B2447] text-sm">Add Transaction to User Account</h2>
+        <div className="grid lg:grid-cols-4 gap-3">
+          <select value={selectedUser} onChange={(event) => setSelectedUser(event.target.value)} className="border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-[#1565C0] focus:border-transparent outline-none">
+            {users.map((user) => (
+              <option key={user.id} value={user.id}>{user.full_name} • {user.user_id}</option>
+            ))}
+          </select>
+          <input type="number" min="0.01" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="Amount" className="border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-[#1565C0] focus:border-transparent outline-none" required />
+          <select value={type} onChange={(event) => setType(event.target.value)} className="border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-[#1565C0] focus:border-transparent outline-none">
+            {transactionTypes.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+          </select>
+          <input value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Description (optional)" className="border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-[#1565C0] focus:border-transparent outline-none" />
+        </div>
+        <button type="submit" disabled={addingTransaction || users.length === 0} className="inline-flex items-center gap-2 bg-[#0B2447] text-white px-4 py-2.5 rounded-xl text-sm font-semibold hover:bg-[#06162c] disabled:opacity-50">
+          {addingTransaction ? 'ADDING...' : '+ ADD TRANSACTION'}
+        </button>
+      </form>
 
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
         <div className="relative">
@@ -175,7 +274,7 @@ export default function AdminUsersPage() {
                     </td>
                     <td className="px-6 py-4"><span className="font-mono text-xs text-gray-700 bg-gray-100 px-2 py-1 rounded-lg">{user.user_id}</span></td>
                     <td className="px-6 py-4 text-gray-500 text-xs whitespace-nowrap">{formatDate(user.created_at)}</td>
-                    <td className="px-6 py-4 text-gray-600 text-xs">{user.accounts?.length ?? 0}</td>
+                    <td className="px-6 py-4 text-gray-600 text-xs">{user.accounts?.length ?? 0} {typeof user.accounts?.[0]?.balance === 'number' ? `• ${formatCurrency(user.accounts[0].balance || 0)}` : ''}</td>
                     <td className="px-6 py-4">
                       <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${getStatusColor(user.status)}`}>
                         {getStatusLabel(user.status)}
@@ -195,6 +294,37 @@ export default function AdminUsersPage() {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="font-heading font-bold text-[#0B2447]">Withdrawal Requests</h2>
+          <p className="text-xs text-gray-500">Pending: {withdrawalRequests.filter((request) => request.status === 'pending').length}</p>
+        </div>
+
+        {withdrawalRequests.length === 0 ? (
+          <p className="text-sm text-gray-500">No withdrawal requests found.</p>
+        ) : (
+          <div className="space-y-3">
+            {withdrawalRequests.map((request) => (
+              <div key={request.id} className="border border-gray-100 rounded-xl p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-[#0B2447]">{request.user_profiles?.full_name || request.user_profiles?.email || request.user_profiles?.user_id || 'Customer'} requested {formatCurrency(Number(request.amount))}</p>
+                    <p className="text-xs text-gray-500 mt-1">{request.bank_name} • acct ending {request.account_number.slice(-4)} • {formatDate(request.created_at)}</p>
+                  </div>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${request.status === 'approved' ? 'bg-green-100 text-green-700' : request.status === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>{request.status}</span>
+                </div>
+                {request.status === 'pending' && (
+                  <div className="flex items-center gap-3 mt-3">
+                    <button onClick={() => handleWithdrawalDecision(request.id, 'approved')} className="text-xs font-semibold text-green-700 hover:text-green-800">Approve</button>
+                    <button onClick={() => handleWithdrawalDecision(request.id, 'rejected')} className="text-xs font-semibold text-red-600 hover:text-red-700">Reject</button>
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         )}
       </div>

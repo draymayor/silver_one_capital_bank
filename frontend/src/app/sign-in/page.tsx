@@ -111,7 +111,7 @@ export default function SignInPage() {
                     autoComplete="username"
                     data-testid="userid-input"
                   />
-                  <p className="text-gray-400 text-xs mt-1.5">Your User ID was provided in your approval email.</p>
+                  <p className="text-gray-400 text-xs mt-1.5">Use the User ID created during your account application and approval process.</p>
                 </div>
 
                 <div>

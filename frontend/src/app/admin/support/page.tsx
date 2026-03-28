@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { formatDate } from '@/lib/utils'
 import { LifeBuoy, Send, RefreshCw, PlusCircle } from 'lucide-react'
 
@@ -38,37 +38,70 @@ export default function AdminSupportPage() {
   const [newSubject, setNewSubject] = useState('')
   const [newMessage, setNewMessage] = useState('')
 
-  async function fetchConversations() {
-    setLoading(true)
+  const fetchConversations = useCallback(async (options?: { silent?: boolean }) => {
+    if (!options?.silent) setLoading(true)
     try {
-      const res = await fetch('/api/admin/support/conversations', { credentials: 'include' })
-      const payload = await res.json()
+      const res = await fetch('/api/admin/support/conversations', { credentials: 'include', cache: 'no-store' })
+      const payload = await res.json().catch(() => null)
       if (res.ok && payload?.ok) {
         const list = payload.conversations ?? []
         const users = payload.approvedUsers ?? []
         setConversations(list)
         setApprovedUsers(users)
-        if (!activeId && list[0]?.id) setActiveId(list[0].id)
-        if (!selectedUser && users[0]?.id) setSelectedUser(users[0].id)
+        setActiveId((current) => {
+          if (current && list.some((conversation: Conversation) => conversation.id === current)) return current
+          return list[0]?.id || ''
+        })
+        setSelectedUser((current) => current || users[0]?.id || '')
       }
     } finally {
-      setLoading(false)
+      if (!options?.silent) setLoading(false)
     }
-  }
+  }, [])
 
-  useEffect(() => {
-    fetchConversations()
+  const fetchMessages = useCallback(async (conversationId: string) => {
+    if (!conversationId) return
+    const res = await fetch(`/api/admin/support/conversations/${conversationId}/messages`, { credentials: 'include', cache: 'no-store' })
+    const payload = await res.json().catch(() => null)
+    if (res.ok && payload?.ok) setMessages(payload.messages ?? [])
   }, [])
 
   useEffect(() => {
-    async function fetchMessages() {
-      if (!activeId) return
-      const res = await fetch(`/api/admin/support/conversations/${activeId}/messages`, { credentials: 'include' })
-      const payload = await res.json()
-      if (res.ok && payload?.ok) setMessages(payload.messages ?? [])
+    void fetchConversations()
+  }, [fetchConversations])
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      void fetchConversations({ silent: true })
+    }, 2500)
+
+    function onVisibility() {
+      if (document.visibilityState === 'visible') {
+        void fetchConversations({ silent: true })
+      }
     }
-    fetchMessages()
-  }, [activeId])
+
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      clearInterval(interval)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [fetchConversations])
+
+  useEffect(() => {
+    if (!activeId) {
+      setMessages([])
+      return
+    }
+
+    void fetchMessages(activeId)
+
+    const interval = setInterval(() => {
+      void fetchMessages(activeId)
+    }, 1500)
+
+    return () => clearInterval(interval)
+  }, [activeId, fetchMessages])
 
   const active = useMemo(() => conversations.find((conversation) => conversation.id === activeId), [conversations, activeId])
 
@@ -91,7 +124,7 @@ export default function AdminSupportPage() {
       const created = payload.conversation as Conversation
       setConversations((prev) => [created, ...prev])
       setActiveId(created.id)
-      setMessages([])
+      setMessages(payload.message ? [payload.message] : [])
       setNewSubject('')
       setNewMessage('')
     }
@@ -108,6 +141,7 @@ export default function AdminSupportPage() {
     const payload = await res.json()
     if (res.ok && payload?.ok) {
       setMessages((prev) => [...prev, payload.message])
+      void fetchConversations({ silent: true })
       setDraft('')
     }
   }
@@ -133,7 +167,7 @@ export default function AdminSupportPage() {
           <h1 className="font-heading font-bold text-2xl text-[#0B2447]">Support Inbox</h1>
           <p className="text-gray-500 text-sm mt-1">Monitor customer conversations and reply from one place</p>
         </div>
-        <button onClick={fetchConversations} className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-[#0B2447] border border-gray-200 rounded-lg px-3 py-2 transition-all">
+        <button onClick={() => { void fetchConversations() }} className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-[#0B2447] border border-gray-200 rounded-lg px-3 py-2 transition-all">
           <RefreshCw className="w-4 h-4" /> Refresh
         </button>
       </div>
