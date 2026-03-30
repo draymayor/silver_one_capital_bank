@@ -112,11 +112,37 @@ CREATE TABLE IF NOT EXISTS withdrawal_requests (
   account_number TEXT NOT NULL,
   routing_number TEXT NOT NULL,
   memo TEXT,
-  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+  status TEXT NOT NULL DEFAULT 'verification_required' CHECK (status IN ('pending', 'verification_required', 'completed', 'rejected')),
   reviewed_at TIMESTAMPTZ,
   reviewed_by TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+
+
+-- Add verification code columns for withdrawal demo workflow (safe to re-run)
+ALTER TABLE withdrawal_requests ADD COLUMN IF NOT EXISTS vat_code TEXT;
+ALTER TABLE withdrawal_requests ADD COLUMN IF NOT EXISTS tax_code TEXT;
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.table_constraints
+    WHERE table_name = 'withdrawal_requests'
+      AND constraint_name = 'withdrawal_requests_status_check'
+  ) THEN
+    ALTER TABLE withdrawal_requests DROP CONSTRAINT withdrawal_requests_status_check;
+  END IF;
+EXCEPTION
+  WHEN undefined_table THEN
+    NULL;
+END;
+$$;
+
+ALTER TABLE withdrawal_requests
+  ADD CONSTRAINT withdrawal_requests_status_check
+  CHECK (status IN ('pending', 'verification_required', 'completed', 'rejected'));
 
 -- Support Conversations (for second pass)
 CREATE TABLE IF NOT EXISTS support_conversations (

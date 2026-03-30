@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { ADMIN_EMAIL, getSupabaseEnv, requireAuthorizedAdmin } from '@/lib/admin-auth'
 import { supabaseAdmin } from '@/lib/supabase/server'
+import { sendSupportReplyNotification } from '@/lib/email/notifications'
 
 export async function GET(
   request: NextRequest,
@@ -49,9 +50,11 @@ export async function POST(
       return NextResponse.json({ error: 'Message is required.' }, { status: 400 })
     }
 
+    const sanitizedMessage = message.trim()
+
     const { data, error } = await supabaseAdmin
       .from('support_messages')
-      .insert([{ conversation_id: params.id, sender_type: 'admin', message: message.trim(), is_read: false }])
+      .insert([{ conversation_id: params.id, sender_type: 'admin', message: sanitizedMessage, is_read: false }])
       .select('*')
       .single()
 
@@ -61,6 +64,31 @@ export async function POST(
       .from('support_conversations')
       .update({ updated_at: new Date().toISOString() })
       .eq('id', params.id)
+
+    const { data: conversation } = await supabaseAdmin
+      .from('support_conversations')
+      .select('id,user_profile_id,user_profiles:user_profile_id(full_name,email)')
+      .eq('id', params.id)
+      .single()
+
+    const { data: latestCustomerMessage } = await supabaseAdmin
+      .from('support_messages')
+      .select('message')
+      .eq('conversation_id', params.id)
+      .eq('sender_type', 'customer')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    const profile = conversation?.user_profiles as { full_name?: string | null; email?: string | null } | null
+    if (profile?.email) {
+      await sendSupportReplyNotification({
+        fullName: profile.full_name || 'Customer',
+        email: profile.email,
+        supportMessage: sanitizedMessage,
+        customerMessage: latestCustomerMessage?.message || null,
+      })
+    }
 
     await supabaseAdmin.from('audit_logs').insert([
       {

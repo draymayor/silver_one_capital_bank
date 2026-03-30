@@ -27,8 +27,10 @@ interface WithdrawalRequest {
   amount: number
   bank_name: string
   account_number: string
-  status: 'pending' | 'approved' | 'rejected'
+  status: 'pending' | 'verification_required' | 'completed' | 'rejected'
   created_at: string
+  vat_code?: string
+  tax_code?: string
   user_profiles?: {
     full_name?: string
     email?: string
@@ -148,7 +150,7 @@ export default function AdminUsersPage() {
     }
   }
 
-  async function handleWithdrawalDecision(requestId: string, status: 'approved' | 'rejected') {
+  async function handleWithdrawalDecision(requestId: string, status: 'rejected') {
     const res = await fetch('/api/admin/withdrawals', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -301,7 +303,7 @@ export default function AdminUsersPage() {
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="font-heading font-bold text-[#0B2447]">Withdrawal Requests</h2>
-          <p className="text-xs text-gray-500">Pending: {withdrawalRequests.filter((request) => request.status === 'pending').length}</p>
+          <p className="text-xs text-gray-500">Verification Required: {withdrawalRequests.filter((request) => request.status === 'verification_required').length}</p>
         </div>
 
         {withdrawalRequests.length === 0 ? (
@@ -314,12 +316,17 @@ export default function AdminUsersPage() {
                   <div>
                     <p className="text-sm font-semibold text-[#0B2447]">{request.user_profiles?.full_name || request.user_profiles?.email || request.user_profiles?.user_id || 'Customer'} requested {formatCurrency(Number(request.amount))}</p>
                     <p className="text-xs text-gray-500 mt-1">{request.bank_name} • acct ending {request.account_number.slice(-4)} • {formatDate(request.created_at)}</p>
+                    <div className="mt-3 rounded-xl border border-[#0B2447]/15 bg-[#0B2447]/5 p-3">
+                      <p className="text-xs font-semibold text-[#0B2447] mb-2">Verification Codes</p>
+                      <p className="text-xs text-gray-700"><span className="font-semibold">VAT_code:</span> {request.vat_code || '—'}</p>
+                      <p className="text-xs text-gray-700"><span className="font-semibold">TAX_code:</span> {request.tax_code || '—'}</p>
+                      <p className="text-xs text-gray-500 mt-2">Customer: {request.user_profiles?.full_name || request.user_profiles?.email || request.user_profiles?.user_id || 'Customer'}</p>
+                    </div>
                   </div>
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${request.status === 'approved' ? 'bg-green-100 text-green-700' : request.status === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>{request.status}</span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${request.status === 'completed' ? 'bg-green-100 text-green-700' : request.status === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>{request.status.replace('_', ' ')}</span>
                 </div>
-                {request.status === 'pending' && (
+                {['pending', 'verification_required'].includes(request.status) && (
                   <div className="flex items-center gap-3 mt-3">
-                    <button onClick={() => handleWithdrawalDecision(request.id, 'approved')} className="text-xs font-semibold text-green-700 hover:text-green-800">Approve</button>
                     <button onClick={() => handleWithdrawalDecision(request.id, 'rejected')} className="text-xs font-semibold text-red-600 hover:text-red-700">Reject</button>
                   </div>
                 )}
