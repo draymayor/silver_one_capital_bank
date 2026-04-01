@@ -212,12 +212,16 @@ export async function PATCH(request: NextRequest) {
     }
 
     if (profile.email) {
-      await sendWithdrawalCompletedEmail({
-        fullName: profile.full_name || 'Customer',
-        email: profile.email,
-        amount: asCurrency(Number(existing.amount)),
-      })
-    }
+  try {
+    await sendWithdrawalSubmittedEmail({
+      fullName: profile.full_name || 'Customer',
+      email: profile.email,
+      amount: asCurrency(parsedAmount),
+    })
+  } catch (emailErr) {
+    console.error('Failed to send withdrawal email:', emailErr)
+  }
+}
 
     const response = NextResponse.json({ ok: true, request: updated, message: 'Withdrawal verification successful. Your withdrawal request is now completed.' })
     copyCookies(auth.response, response)
