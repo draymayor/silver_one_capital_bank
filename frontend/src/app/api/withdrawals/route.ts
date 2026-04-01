@@ -213,13 +213,13 @@ export async function PATCH(request: NextRequest) {
 
     if (profile.email) {
   try {
-    await sendWithdrawalSubmittedEmail({
+    await sendWithdrawalCompletedEmail({
       fullName: profile.full_name || 'Customer',
       email: profile.email,
-      amount: asCurrency(parsedAmount),
+      amount: asCurrency(Number(existing.amount)),
     })
   } catch (emailErr) {
-    console.error('Failed to send withdrawal email:', emailErr)
+    console.error('Failed to send withdrawal completed email:', emailErr)
   }
 }
 
