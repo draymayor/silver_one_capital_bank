@@ -21,7 +21,8 @@
     "react-hook-form": "^7.52.1",
     "@hookform/resolvers": "^3.9.0",
     "zod": "^3.23.8",
-    "date-fns": "^3.6.0"
+    "date-fns": "^3.6.0",
+    "nodemailer": "^3.1.4"
   },
   "devDependencies": {
     "typescript": "^5.5.3",
@@ -32,6 +33,7 @@
     "autoprefixer": "^10.4.19",
     "postcss": "^8.4.39",
     "eslint": "^8.57.0",
-    "eslint-config-next": "14.2.5"
+    "eslint-config-next": "14.2.5",
+    "@types/nodemailer": "^6.4.17"
   }
 }
