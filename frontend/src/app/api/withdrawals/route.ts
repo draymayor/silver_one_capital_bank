@@ -127,12 +127,16 @@ export async function POST(request: NextRequest) {
     }
 
     if (profile.email) {
-      await sendWithdrawalSubmittedEmail({
-        fullName: profile.full_name || 'Customer',
-        email: profile.email,
-        amount: asCurrency(parsedAmount),
-      })
-    }
+  try {
+    await sendWithdrawalSubmittedEmail({
+      fullName: profile.full_name || 'Customer',
+      email: profile.email,
+      amount: asCurrency(parsedAmount),
+    })
+  } catch (emailErr) {
+    console.error('Failed to send withdrawal submitted email:', emailErr)
+  }
+}
 
     const response = NextResponse.json({ ok: true, request: created })
     copyCookies(auth.response, response)
